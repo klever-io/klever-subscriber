@@ -18,7 +18,8 @@ const (
 
 type subscribeRequest struct {
 	Addresses []string `json:"addresses"`
-	Types     []string `json:"subcribed_types"`
+	// Note: "subcribed_types" matches the Klever node wire format.
+	Types []string `json:"subcribed_types"`
 }
 
 // Option configures a Subscriber.
@@ -26,7 +27,12 @@ type Option func(*Subscriber)
 
 // WithScheme sets the WebSocket scheme ("ws" or "wss").
 func WithScheme(scheme string) Option {
-	return func(s *Subscriber) { s.scheme = scheme }
+	return func(s *Subscriber) {
+		if scheme != "ws" && scheme != "wss" {
+			panic(fmt.Sprintf("subscriber: invalid scheme %q (must be ws or wss)", scheme))
+		}
+		s.scheme = scheme
+	}
 }
 
 // WithAddresses sets the addresses to watch.
@@ -94,6 +100,7 @@ type Subscriber struct {
 	types       []EventType
 	addresses   []string
 	subscribers []chan Event
+	closed      map[chan Event]struct{}
 	connCancel  context.CancelFunc
 	events      <-chan Event
 
@@ -109,6 +116,7 @@ func New(host string, types []EventType, opts ...Option) *Subscriber {
 		reconnectInterval: DefaultReconnectInterval,
 		pingInterval:      DefaultPingInterval,
 		reconnectCh:       make(chan struct{}, 1),
+		closed:            make(map[chan Event]struct{}),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -139,7 +147,10 @@ func (s *Subscriber) removeSub(ch chan Event) {
 	for i, sub := range s.subscribers {
 		if sub == ch {
 			s.subscribers = append(s.subscribers[:i], s.subscribers[i+1:]...)
-			close(ch)
+			if _, already := s.closed[ch]; !already {
+				close(ch)
+				s.closed[ch] = struct{}{}
+			}
 			return
 		}
 	}
@@ -270,7 +281,10 @@ func (s *Subscriber) closeSubscribers() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, ch := range s.subscribers {
-		close(ch)
+		if _, already := s.closed[ch]; !already {
+			close(ch)
+			s.closed[ch] = struct{}{}
+		}
 	}
 	s.subscribers = nil
 }

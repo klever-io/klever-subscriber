@@ -135,8 +135,8 @@
   function applyFilters() {
     var items = eventListEl.querySelectorAll(".event-item");
     items.forEach(function (el) {
-      var type = el.dataset.type;
-      el.style.display = filters[type] ? "" : "none";
+      var evtType = el.dataset.type;
+      el.style.display = filters[evtType] ? "" : "none";
     });
   }
 

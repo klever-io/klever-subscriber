@@ -26,6 +26,9 @@ type sseClient struct {
 }
 
 // Server serves the web dashboard and SSE event stream.
+//
+// Security: The subscription endpoint allows reconfiguring the subscriber.
+// Bind to localhost (e.g. "127.0.0.1:3000") when running on shared networks.
 type Server struct {
 	addr          string
 	sub           *subscriber.Subscriber
@@ -63,7 +66,8 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 // Start runs the web server until ctx is cancelled.
-func (s *Server) Start(ctx context.Context) {
+// It returns a non-nil error if the server fails to bind.
+func (s *Server) Start(ctx context.Context) error {
 	subscription := s.sub.Subscribe()
 	go s.processEvents(ctx, subscription.C())
 
@@ -91,7 +95,11 @@ func (s *Server) Start(ctx context.Context) {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	srv.ListenAndServe()
+	err := srv.ListenAndServe()
+	if err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("web server: %w", err)
+	}
+	return nil
 }
 
 func (s *Server) processEvents(ctx context.Context, events <-chan subscriber.Event) {
@@ -115,6 +123,12 @@ func (s *Server) processEvents(ctx context.Context, events <-chan subscriber.Eve
 				start++
 			}
 			s.recentTs = s.recentTs[start:]
+			// Compact backing array to prevent slow memory growth.
+			if cap(s.recentTs) > 2*len(s.recentTs) && cap(s.recentTs) > 1024 {
+				compacted := make([]time.Time, len(s.recentTs))
+				copy(compacted, s.recentTs)
+				s.recentTs = compacted
+			}
 			s.mu.Unlock()
 
 			// Fan out to SSE clients.
@@ -229,6 +243,7 @@ func (s *Server) handleSubscription(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 
 	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
 		var req subscriptionPayload
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
@@ -240,6 +255,14 @@ func (s *Server) handleSubscription(w http.ResponseWriter, r *http.Request) {
 		for _, t := range req.Types {
 			if !valid[t] {
 				http.Error(w, fmt.Sprintf("unknown event type %q", t), http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Validate addresses.
+		for _, addr := range req.Addresses {
+			if len(addr) == 0 || len(addr) > 128 {
+				http.Error(w, fmt.Sprintf("invalid address length: %q", addr), http.StatusBadRequest)
 				return
 			}
 		}

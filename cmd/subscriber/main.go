@@ -142,7 +142,12 @@ func run(eventTypes []subscriber.EventType) error {
 
 	if webAddr != "" {
 		srv := web.NewServer(webAddr, sub)
-		go srv.Start(ctx)
+		go func() {
+			if err := srv.Start(ctx); err != nil {
+				fmt.Fprintf(os.Stderr, "Web server error: %v\n", err)
+				cancel()
+			}
+		}()
 		// Always print the dashboard URL so you know where to go.
 		fmt.Fprintf(os.Stderr, "Web dashboard at http://%s\n", webAddr)
 		if len(eventTypes) == 0 {

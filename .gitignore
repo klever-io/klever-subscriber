@@ -1,5 +1,6 @@
 # Binaries
 bin/
+klever-subscriber
 *.exe
 *.exe~
 *.dll
