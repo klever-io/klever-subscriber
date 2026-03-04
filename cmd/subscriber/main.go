@@ -84,7 +84,7 @@ func init() {
 	rootCmd.Flags().StringSliceVar(&addresses, "addresses", nil, "Addresses to watch (required for user_transaction and accounts types)")
 	rootCmd.Flags().BoolVar(&pretty, "pretty", false, "Pretty-print JSON output")
 	rootCmd.Flags().BoolVar(&raw, "raw", false, "Print raw messages without decoding base64 data")
-	rootCmd.Flags().StringVar(&webAddr, "web", "", "Start web dashboard on the given address (e.g. :3000)")
+	rootCmd.Flags().StringVar(&webAddr, "web", "0.0.0.0:3000", "Start web dashboard on the given address (e.g. :3000)")
 	rootCmd.Flags().BoolVar(&quiet, "quiet", false, "Suppress stdout event output and stderr status messages (implied in web-only mode)")
 }
 
