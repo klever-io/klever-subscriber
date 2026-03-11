@@ -8,27 +8,27 @@
   var totalEl = document.getElementById("total");
   var eventListEl = document.getElementById("event-list");
   var applyBtn = document.getElementById("sub-apply");
+  var addBtn = document.getElementById("sub-add");
+  var removeBtn = document.getElementById("sub-remove");
   var addrInput = document.getElementById("sub-addr");
 
   var countEls = {
     blocks: document.getElementById("count-blocks"),
     transactions: document.getElementById("count-transactions"),
-    user_transaction: document.getElementById("count-user_transaction"),
+    user_transactions: document.getElementById("count-user_transactions"),
     accounts: document.getElementById("count-accounts"),
   };
 
   var filters = {
     blocks: true,
     transactions: true,
-    user_transaction: true,
+    user_transactions: true,
     accounts: true,
   };
 
-  // Track what the server has vs what the user selected.
   var serverTypes = [];
   var serverAddresses = [];
 
-  // Show empty state initially.
   eventListEl.innerHTML =
     '<div class="empty-state">Configure subscription above to start receiving events.</div>';
 
@@ -60,6 +60,8 @@
       JSON.stringify(types) !== JSON.stringify(serverTypes) ||
       JSON.stringify(addrs) !== JSON.stringify(serverAddresses);
     applyBtn.disabled = !dirty;
+    addBtn.disabled = !dirty;
+    removeBtn.disabled = !dirty;
   }
 
   subCheckboxes.forEach(function (cb) {
@@ -86,6 +88,7 @@
       .then(function (resp) {
         serverTypes = resp.types || [];
         serverAddresses = resp.addresses || [];
+        syncCheckboxes();
         checkDirty();
         if (serverTypes.length > 0) {
           var empty = eventListEl.querySelector(".empty-state");
@@ -98,20 +101,80 @@
       });
   });
 
-  // Load current subscription on startup.
+  addBtn.addEventListener("click", function () {
+    addBtn.disabled = true;
+    var payload = {
+      types: getSelectedTypes(),
+      addresses: getAddresses(),
+    };
+
+    fetch("/subscription/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(function (resp) {
+        serverTypes = resp.types || [];
+        serverAddresses = resp.addresses || [];
+        syncCheckboxes();
+        checkDirty();
+        if (serverTypes.length > 0) {
+          var empty = eventListEl.querySelector(".empty-state");
+          if (empty) empty.textContent = "Waiting for events...";
+        }
+      })
+      .catch(function (err) {
+        console.error("subscribe error:", err);
+        checkDirty();
+      });
+  });
+
+  removeBtn.addEventListener("click", function () {
+    removeBtn.disabled = true;
+    var payload = {
+      types: getSelectedTypes(),
+      addresses: getAddresses(),
+    };
+
+    fetch("/subscription/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(function (resp) {
+        serverTypes = resp.types || [];
+        serverAddresses = resp.addresses || [];
+        syncCheckboxes();
+        checkDirty();
+      })
+      .catch(function (err) {
+        console.error("unsubscribe error:", err);
+        checkDirty();
+      });
+  });
+
+  function syncCheckboxes() {
+    subCheckboxes.forEach(function (cb) {
+      cb.checked = serverTypes.indexOf(cb.value) !== -1;
+    });
+    addrInput.value = serverAddresses.join(", ");
+  }
+
   function loadSubscription() {
     fetch("/subscription")
       .then(function (r) { return r.json(); })
       .then(function (s) {
         serverTypes = s.types || [];
         serverAddresses = s.addresses || [];
-
-        // Set checkboxes to match server state.
-        subCheckboxes.forEach(function (cb) {
-          cb.checked = serverTypes.indexOf(cb.value) !== -1;
-        });
-
-        addrInput.value = serverAddresses.join(", ");
+        syncCheckboxes();
 
         if (serverTypes.length > 0) {
           var empty = eventListEl.querySelector(".empty-state");
@@ -122,6 +185,83 @@
       })
       .catch(function () {});
   }
+
+  // --- Query panel ---
+
+  var tabBtns = document.querySelectorAll(".tab-btn");
+  var queryTabs = document.querySelectorAll(".query-tab");
+  var queryResult = document.getElementById("query-result");
+
+  tabBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      tabBtns.forEach(function (b) { b.classList.remove("active"); });
+      queryTabs.forEach(function (t) { t.classList.remove("active"); });
+      btn.classList.add("active");
+      document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+      queryResult.style.display = "none";
+    });
+  });
+
+  document.getElementById("query-tx-btn").addEventListener("click", function () {
+    var hash = document.getElementById("query-tx-hash").value.trim();
+    if (!hash) return;
+    var withRes = document.getElementById("query-tx-results").checked;
+
+    queryResult.style.display = "block";
+    queryResult.className = "query-result loading";
+    queryResult.textContent = "Loading...";
+
+    fetch("/api/transaction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hash: hash, withResults: withRes }),
+    })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(function (data) {
+        queryResult.className = "query-result";
+        queryResult.innerHTML = '<pre>' + highlightJSON(data) + '</pre>';
+      })
+      .catch(function (err) {
+        queryResult.className = "query-result error";
+        queryResult.textContent = err.message;
+      });
+  });
+
+  document.getElementById("query-block-btn").addEventListener("click", function () {
+    var nonceVal = document.getElementById("query-block-nonce").value.trim();
+    var hashVal = document.getElementById("query-block-hash").value.trim();
+    if (!nonceVal && !hashVal) return;
+    var withT = document.getElementById("query-block-txs").checked;
+
+    var payload = { withTxs: withT };
+    if (nonceVal) payload.nonce = parseInt(nonceVal, 10);
+    if (hashVal) payload.hash = hashVal;
+
+    queryResult.style.display = "block";
+    queryResult.className = "query-result loading";
+    queryResult.textContent = "Loading...";
+
+    fetch("/api/block", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(function (data) {
+        queryResult.className = "query-result";
+        queryResult.innerHTML = '<pre>' + highlightJSON(data) + '</pre>';
+      })
+      .catch(function (err) {
+        queryResult.className = "query-result error";
+        queryResult.textContent = err.message;
+      });
+  });
 
   // --- Display filter checkboxes ---
 
@@ -184,7 +324,6 @@
   }
 
   function addEvent(evt) {
-    // Remove empty state on first event.
     var empty = eventListEl.querySelector(".empty-state");
     if (empty) empty.remove();
 
@@ -217,10 +356,8 @@
       div.style.display = "none";
     }
 
-    // Prepend newest at top.
     eventListEl.insertBefore(div, eventListEl.firstChild);
 
-    // Trim old events.
     while (eventListEl.children.length > MAX_EVENTS) {
       eventListEl.removeChild(eventListEl.lastChild);
     }
@@ -266,7 +403,7 @@
         }
         epsEl.textContent = (s.eventsPerSec || 0).toFixed(1);
         totalEl.textContent = s.total || 0;
-        var types = ["blocks", "transactions", "user_transaction", "accounts"];
+        var types = ["blocks", "transactions", "user_transactions", "accounts"];
         types.forEach(function (t) {
           if (countEls[t]) {
             countEls[t].textContent = (s.counts && s.counts[t]) || 0;
