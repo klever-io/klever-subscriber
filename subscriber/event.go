@@ -11,7 +11,7 @@ type EventType string
 const (
 	EventBlocks          EventType = "blocks"
 	EventTransactions    EventType = "transactions"
-	EventUserTransaction EventType = "user_transaction"
+	EventUserTransactions EventType = "user_transactions"
 	EventAccounts        EventType = "accounts"
 )
 
@@ -20,7 +20,7 @@ func ValidEventTypes() map[EventType]bool {
 	return map[EventType]bool{
 		EventBlocks:          true,
 		EventTransactions:    true,
-		EventUserTransaction: true,
+		EventUserTransactions: true,
 		EventAccounts:        true,
 	}
 }
