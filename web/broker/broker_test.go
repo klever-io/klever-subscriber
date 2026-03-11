@@ -1,4 +1,4 @@
-package web
+package broker
 
 import (
 	"encoding/json"
@@ -9,46 +9,13 @@ import (
 	"github.com/klever-io/klever-subscriber/subscriber"
 )
 
-func TestSecurityHeaders(t *testing.T) {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	handler := securityHeaders(inner)
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	tests := []struct {
-		header string
-		want   string
-	}{
-		{"X-Content-Type-Options", "nosniff"},
-		{"X-Frame-Options", "DENY"},
-		{"Referrer-Policy", "no-referrer"},
-		{"Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'"},
-	}
-
-	for _, tt := range tests {
-		got := rec.Header().Get(tt.header)
-		if got != tt.want {
-			t.Errorf("%s = %q, want %q", tt.header, got, tt.want)
-		}
-	}
-}
-
 func TestSSEClientLimit(t *testing.T) {
-	s := &Server{
-		maxSSEClients: 2,
-		clients:       make(map[*sseClient]struct{}),
-	}
-
-	// Simulate 2 connected clients.
-	s.sseCount.Store(2)
+	b := New(2, func() bool { return false })
+	b.sseCount.Store(2)
 
 	req := httptest.NewRequest(http.MethodGet, "/events", nil)
 	rec := httptest.NewRecorder()
-	s.handleSSE(rec, req)
+	b.HandleSSE(rec, req)
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
@@ -56,7 +23,7 @@ func TestSSEClientLimit(t *testing.T) {
 }
 
 func TestStatsResponseJSON(t *testing.T) {
-	stats := statsResponse{
+	stats := StatsSnapshot{
 		Connected:    true,
 		Total:        42,
 		Counts:       map[subscriber.EventType]uint64{subscriber.EventBlocks: 30, subscriber.EventTransactions: 12},
@@ -68,7 +35,7 @@ func TestStatsResponseJSON(t *testing.T) {
 		t.Fatalf("marshal stats: %v", err)
 	}
 
-	var decoded statsResponse
+	var decoded StatsSnapshot
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal stats: %v", err)
 	}
@@ -88,15 +55,12 @@ func TestStatsResponseJSON(t *testing.T) {
 }
 
 func TestNoCORSHeader(t *testing.T) {
-	s := &Server{
-		maxSSEClients: 0, // will reject immediately
-		clients:       make(map[*sseClient]struct{}),
-	}
-	s.sseCount.Store(0) // but maxSSEClients=0 means limit reached
+	b := New(0, func() bool { return false })
+	b.sseCount.Store(0)
 
 	req := httptest.NewRequest(http.MethodGet, "/events", nil)
 	rec := httptest.NewRecorder()
-	s.handleSSE(rec, req)
+	b.HandleSSE(rec, req)
 
 	cors := rec.Header().Get("Access-Control-Allow-Origin")
 	if cors != "" {
