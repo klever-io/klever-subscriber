@@ -323,7 +323,40 @@
       .replace(/"/g, "&quot;");
   }
 
+  function normalizeEvent(evt) {
+    // If data is a JSON string, parse it into an object.
+    if (typeof evt.data === "string") {
+      try {
+        evt.data = JSON.parse(evt.data);
+      } catch (e) {
+        // keep as-is if not valid JSON
+      }
+    }
+
+    // If the parsed data contains a nested structure with type/data,
+    // lift the fields up (e.g. { type: "", data: { type: "blocks", data: {...} } }).
+    if (evt.data && typeof evt.data === "object" && evt.data.type && evt.data.data !== undefined) {
+      if (!evt.type) evt.type = evt.data.type;
+      if (!evt.hash && evt.data.hash) evt.hash = evt.data.hash;
+      if (!evt.address && evt.data.address) evt.address = evt.data.address;
+      evt.data = evt.data.data;
+    }
+
+    // If data is still a JSON string after first parse, parse again.
+    if (typeof evt.data === "string") {
+      try {
+        evt.data = JSON.parse(evt.data);
+      } catch (e) {
+        // keep as-is
+      }
+    }
+
+    return evt;
+  }
+
   function addEvent(evt) {
+    evt = normalizeEvent(evt);
+
     var empty = eventListEl.querySelector(".empty-state");
     if (empty) empty.remove();
 
