@@ -13,6 +13,7 @@ type StatsSnapshot struct {
 	Total        uint64                          `json:"total"`
 	Counts       map[subscriber.EventType]uint64 `json:"counts"`
 	EventsPerSec float64                         `json:"eventsPerSec"`
+	URL          string                          `json:"url"`
 }
 
 func (b *Broker) HandleStats(w http.ResponseWriter, r *http.Request) {
@@ -37,6 +38,7 @@ func (b *Broker) HandleStats(w http.ResponseWriter, r *http.Request) {
 		Total:        total,
 		Counts:       counts,
 		EventsPerSec: float64(count) / 10.0,
+		URL:          b.url,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

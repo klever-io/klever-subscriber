@@ -3,118 +3,213 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Klever Subscriber Dashboard</title>
+  <title>Klever Subscriber</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23141432'/><path d='M10 7h4v7.5L20.5 7H25l-7.5 8.5L25 25h-4.5l-5.5-7.5V25H10V7z' fill='url(%23g)'/><defs><linearGradient id='g' x1='0' y1='0' x2='32' y2='32' gradientUnits='userSpaceOnUse'><stop stop-color='%23EE3F71'/><stop offset='1' stop-color='%237D3FF1'/></linearGradient></defs></svg>">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <div class="header-brand">
-      <svg class="logo" width="34" height="34" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#EE3F71"/>
-            <stop offset="1" stop-color="#7D3FF1"/>
-          </linearGradient>
-        </defs>
-        <rect width="32" height="32" rx="8" fill="#141432"/>
-        <path d="M10 7h4v7.5L20.5 7H25l-7.5 8.5L25 25h-4.5l-5.5-7.5V25H10V7z" fill="url(#logo-grad)"/>
-      </svg>
-      <h1><span class="brand-klever">Klever</span> <span class="brand-subscriber">Subscriber</span></h1>
-    </div>
-    <span id="status" class="badge disconnected">Disconnected</span>
-  </header>
-  <div class="header-gradient-line"></div>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <svg class="logo" width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="lg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop stop-color="#EE3F71"/><stop offset="1" stop-color="#7D3FF1"/></linearGradient></defs>
+          <rect width="32" height="32" rx="8" fill="#141432"/>
+          <path d="M10 7h4v7.5L20.5 7H25l-7.5 8.5L25 25h-4.5l-5.5-7.5V25H10V7z" fill="url(#lg)"/>
+        </svg>
+        <span class="app-title">Klever <span class="title-thin">Subscriber</span></span>
+      </div>
 
-  <section id="subscription-panel">
-    <div class="panel-header">
-      <span class="panel-title">Subscription</span>
-      <div class="panel-actions">
-        <button id="sub-add" class="btn-secondary" disabled>Add</button>
-        <button id="sub-remove" class="btn-secondary" disabled>Remove</button>
-        <button id="sub-apply" class="btn-apply" disabled>Replace All</button>
-      </div>
-    </div>
-    <div class="panel-body">
-      <div class="sub-types">
-        <label><input type="checkbox" name="sub-type" value="blocks"> blocks</label>
-        <label><input type="checkbox" name="sub-type" value="transactions"> transactions</label>
-        <label><input type="checkbox" name="sub-type" value="user_transactions"> user_transactions</label>
-        <label><input type="checkbox" name="sub-type" value="accounts"> accounts</label>
-      </div>
-      <div class="sub-addresses">
-        <input type="text" id="sub-addr" placeholder="Addresses (comma-separated)" spellcheck="false">
-      </div>
-    </div>
-  </section>
+      <div class="sidebar-body">
+        <div class="sidebar-section">
+          <div class="section-title">Node URL</div>
+          <div id="node-url" class="node-url-display">--</div>
+        </div>
 
-  <section id="query-panel">
-    <div class="panel-header">
-      <span class="panel-title">Query</span>
-      <div class="query-tabs">
-        <button class="tab-btn active" data-tab="tx">Transaction</button>
-        <button class="tab-btn" data-tab="block">Block</button>
-      </div>
-    </div>
-    <div class="panel-body">
-      <div id="tab-tx" class="query-tab active">
-        <div class="query-row">
-          <input type="text" id="query-tx-hash" placeholder="Transaction hash" spellcheck="false">
-          <label class="query-check"><input type="checkbox" id="query-tx-results"> withResults</label>
-          <button id="query-tx-btn" class="btn-apply">Look up</button>
+        <div class="sidebar-section">
+          <div class="section-title">Event Types</div>
+          <div class="type-options">
+            <label class="type-option"><input type="checkbox" name="sub-type" value="blocks"><span class="type-dot blocks"></span>blocks</label>
+            <label class="type-option"><input type="checkbox" name="sub-type" value="transactions"><span class="type-dot transactions"></span>transactions</label>
+            <label class="type-option"><input type="checkbox" name="sub-type" value="user_transactions"><span class="type-dot user_transactions"></span>user_transactions</label>
+            <label class="type-option"><input type="checkbox" name="sub-type" value="accounts"><span class="type-dot accounts"></span>accounts</label>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="section-title">Addresses</div>
+          <input type="text" id="sub-addr" placeholder="Comma-separated addresses" spellcheck="false">
         </div>
       </div>
-      <div id="tab-block" class="query-tab">
-        <div class="query-row">
-          <input type="number" id="query-block-nonce" placeholder="Nonce" min="0">
-          <input type="text" id="query-block-hash" placeholder="Block hash" spellcheck="false">
-          <label class="query-check"><input type="checkbox" id="query-block-txs"> withTxs</label>
-          <button id="query-block-btn" class="btn-apply">Look up</button>
+
+      <div class="sidebar-footer">
+        <button id="sub-apply" class="btn btn-green" disabled>Replace All</button>
+        <div class="btn-pair">
+          <button id="sub-add" class="btn btn-outline" disabled>Add</button>
+          <button id="sub-remove" class="btn btn-outline" disabled>Remove</button>
+        </div>
+        <div class="connection-status">
+          <span class="status-dot disconnected" id="status-dot"></span>
+          <span id="status">Disconnected</span>
         </div>
       </div>
-      <div id="query-result" class="query-result" style="display:none"></div>
-    </div>
-  </section>
+    </aside>
 
-  <section id="stats-bar">
-    <div class="stat stat-highlight">
-      <span class="stat-value" id="eps">0.0</span>
-      <span class="stat-label">events / sec</span>
-    </div>
-    <div class="stat stat-highlight">
-      <span class="stat-value" id="total">0</span>
-      <span class="stat-label">total</span>
-    </div>
-    <div class="stat type-blocks">
-      <span class="stat-value" id="count-blocks">0</span>
-      <span class="stat-label">blocks</span>
-    </div>
-    <div class="stat type-transactions">
-      <span class="stat-value" id="count-transactions">0</span>
-      <span class="stat-label">transactions</span>
-    </div>
-    <div class="stat type-user_transactions">
-      <span class="stat-value" id="count-user_transactions">0</span>
-      <span class="stat-label">user txn</span>
-    </div>
-    <div class="stat type-accounts">
-      <span class="stat-value" id="count-accounts">0</span>
-      <span class="stat-label">accounts</span>
-    </div>
-  </section>
+    <main class="main">
+      <div class="toolbar">
+        <button class="tool-tab active" data-tab="subscription">Subscription</button>
+        <button class="tool-tab" data-tab="get-tx">Get Transaction</button>
+        <button class="tool-tab" data-tab="get-block">Get Block</button>
+      </div>
 
-  <section id="filters">
-    <span class="filter-label">Display</span>
-    <label><input type="checkbox" value="blocks" checked> blocks</label>
-    <label><input type="checkbox" value="transactions" checked> transactions</label>
-    <label><input type="checkbox" value="user_transactions" checked> user_transactions</label>
-    <label><input type="checkbox" value="accounts" checked> accounts</label>
-  </section>
+      <div class="content-area">
+        <div id="pane-subscription" class="pane active">
+          <div class="pane-columns">
+            <div class="pane-col sub-list-col">
+              <div class="col-header">
+                <span>Active Types</span>
+                <button class="col-header-btn" id="refresh-btn">Refresh</button>
+              </div>
+              <div id="active-types" class="col-body">
+                <div class="empty-msg">None</div>
+              </div>
+            </div>
+            <div class="pane-col sub-list-col">
+              <div class="col-header">
+                <span>Active Addresses</span>
+              </div>
+              <div id="active-addresses" class="col-body">
+                <div class="empty-msg">None</div>
+              </div>
+            </div>
+            <div class="pane-col detail-col">
+              <div class="col-header">
+                <span>Config</span>
+                <button class="col-header-btn" id="copy-config-btn">Copy</button>
+              </div>
+              <div class="col-body result-body">
+                <pre id="config-json"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
 
-  <section id="events">
-    <div id="event-list"></div>
-  </section>
+        <div id="pane-get-tx" class="pane">
+          <div class="pane-columns">
+            <div class="pane-col query-input-col">
+              <div class="col-header"><span>Parameters</span></div>
+              <div class="col-body">
+                <div class="form-group">
+                  <label class="field-label">Hash</label>
+                  <input type="text" id="query-tx-hash" placeholder="Transaction hash" spellcheck="false">
+                </div>
+                <label class="check-label"><input type="checkbox" id="query-tx-results"> withResults</label>
+                <button id="query-tx-btn" class="btn btn-primary">Send</button>
+              </div>
+            </div>
+            <div class="pane-col result-col">
+              <div class="col-header">
+                <span>Response</span>
+                <button class="col-header-btn copy-btn" data-target="query-tx-result">Copy</button>
+              </div>
+              <div id="query-tx-result" class="col-body result-body">
+                <div class="empty-msg">Send a query to see results</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
+        <div id="pane-get-block" class="pane">
+          <div class="pane-columns">
+            <div class="pane-col query-input-col">
+              <div class="col-header"><span>Parameters</span></div>
+              <div class="col-body">
+                <div class="form-group">
+                  <label class="field-label">Nonce</label>
+                  <input type="number" id="query-block-nonce" placeholder="Block nonce" min="0">
+                </div>
+                <div class="form-group">
+                  <label class="field-label">Hash</label>
+                  <input type="text" id="query-block-hash" placeholder="Block hash" spellcheck="false">
+                </div>
+                <label class="check-label"><input type="checkbox" id="query-block-txs"> withTxs</label>
+                <button id="query-block-btn" class="btn btn-primary">Send</button>
+              </div>
+            </div>
+            <div class="pane-col result-col">
+              <div class="col-header">
+                <span>Response</span>
+                <button class="col-header-btn copy-btn" data-target="query-block-result">Copy</button>
+              </div>
+              <div id="query-block-result" class="col-body result-body">
+                <div class="empty-msg">Send a query to see results</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottom-split">
+        <div class="bottom-panel event-feed-panel">
+          <div class="panel-header">
+            <span class="panel-title">Event Feed</span>
+            <div class="feed-controls">
+              <div class="feed-filters" id="filters">
+                <label><input type="checkbox" value="blocks" checked> blk</label>
+                <label><input type="checkbox" value="transactions" checked> tx</label>
+                <label><input type="checkbox" value="user_transactions" checked> utx</label>
+                <label><input type="checkbox" value="accounts" checked> acc</label>
+              </div>
+              <button class="col-header-btn" id="clear-events-btn">Clear</button>
+            </div>
+          </div>
+          <div id="event-list" class="event-list">
+            <div class="empty-state">Configure subscription to start receiving events.</div>
+          </div>
+        </div>
+
+        <div class="bottom-panel stats-panel">
+          <div class="panel-header">
+            <span class="panel-title">Stats</span>
+          </div>
+          <div class="stats-body">
+            <div class="stat-row large">
+              <span class="status-dot disconnected" id="status-dot-stats"></span>
+              <span id="status-stats">Disconnected</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Events / sec</span>
+              <span class="stat-value" id="eps">0.0</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Total Events</span>
+              <span class="stat-value" id="total">0</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-row type-row">
+              <span class="card-dot blocks"></span>
+              <span class="stat-label">blocks</span>
+              <span class="stat-value" id="count-blocks">0</span>
+            </div>
+            <div class="stat-row type-row">
+              <span class="card-dot transactions"></span>
+              <span class="stat-label">transactions</span>
+              <span class="stat-value" id="count-transactions">0</span>
+            </div>
+            <div class="stat-row type-row">
+              <span class="card-dot user_transactions"></span>
+              <span class="stat-label">user_transactions</span>
+              <span class="stat-value" id="count-user_transactions">0</span>
+            </div>
+            <div class="stat-row type-row">
+              <span class="card-dot accounts"></span>
+              <span class="stat-label">accounts</span>
+              <span class="stat-value" id="count-accounts">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>

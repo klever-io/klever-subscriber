@@ -27,7 +27,7 @@ func NewServer(addr string, sub *subscriber.Subscriber) *Server {
 	return &Server{
 		addr:   addr,
 		sub:    sub,
-		broker: broker.New(broker.DefaultMaxClients, sub.Connected),
+		broker: broker.New(broker.DefaultMaxClients, sub.Connected, sub.URL()),
 	}
 }
 

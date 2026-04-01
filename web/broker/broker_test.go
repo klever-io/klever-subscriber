@@ -10,7 +10,7 @@ import (
 )
 
 func TestSSEClientLimit(t *testing.T) {
-	b := New(2, func() bool { return false })
+	b := New(2, func() bool { return false }, "")
 	b.sseCount.Store(2)
 
 	req := httptest.NewRequest(http.MethodGet, "/events", nil)
@@ -55,7 +55,7 @@ func TestStatsResponseJSON(t *testing.T) {
 }
 
 func TestNoCORSHeader(t *testing.T) {
-	b := New(0, func() bool { return false })
+	b := New(0, func() bool { return false }, "")
 	b.sseCount.Store(0)
 
 	req := httptest.NewRequest(http.MethodGet, "/events", nil)
