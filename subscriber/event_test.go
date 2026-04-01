@@ -63,12 +63,12 @@ func TestDecodeEvent(t *testing.T) {
 		{
 			name: "with address",
 			input: rawEvent{
-				Type:    "user_transaction",
+				Type:    "user_transactions",
 				Hash:    "utx1",
 				Address: "klv1abc",
 				Data:    base64.StdEncoding.EncodeToString([]byte(`{"amount":50}`)),
 			},
-			wantType: EventUserTransaction,
+			wantType: EventUserTransactions,
 			wantHash: "utx1",
 			wantAddr: "klv1abc",
 			wantData: map[string]any{"amount": float64(50)},
@@ -160,7 +160,7 @@ func TestDecodeEvent_EmptyMessage(t *testing.T) {
 func TestValidEventTypes(t *testing.T) {
 	valid := ValidEventTypes()
 
-	expected := []EventType{EventBlocks, EventTransactions, EventUserTransaction, EventAccounts}
+	expected := []EventType{EventBlocks, EventTransactions, EventUserTransactions, EventAccounts}
 	for _, et := range expected {
 		if !valid[et] {
 			t.Errorf("expected %q to be valid", et)

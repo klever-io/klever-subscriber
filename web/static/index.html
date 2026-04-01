@@ -29,18 +29,50 @@
   <section id="subscription-panel">
     <div class="panel-header">
       <span class="panel-title">Subscription</span>
-      <button id="sub-apply" class="btn-apply" disabled>Apply</button>
+      <div class="panel-actions">
+        <button id="sub-add" class="btn-secondary" disabled>Add</button>
+        <button id="sub-remove" class="btn-secondary" disabled>Remove</button>
+        <button id="sub-apply" class="btn-apply" disabled>Replace All</button>
+      </div>
     </div>
     <div class="panel-body">
       <div class="sub-types">
         <label><input type="checkbox" name="sub-type" value="blocks"> blocks</label>
         <label><input type="checkbox" name="sub-type" value="transactions"> transactions</label>
-        <label><input type="checkbox" name="sub-type" value="user_transaction"> user_transaction</label>
+        <label><input type="checkbox" name="sub-type" value="user_transactions"> user_transactions</label>
         <label><input type="checkbox" name="sub-type" value="accounts"> accounts</label>
       </div>
       <div class="sub-addresses">
         <input type="text" id="sub-addr" placeholder="Addresses (comma-separated)" spellcheck="false">
       </div>
+    </div>
+  </section>
+
+  <section id="query-panel">
+    <div class="panel-header">
+      <span class="panel-title">Query</span>
+      <div class="query-tabs">
+        <button class="tab-btn active" data-tab="tx">Transaction</button>
+        <button class="tab-btn" data-tab="block">Block</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div id="tab-tx" class="query-tab active">
+        <div class="query-row">
+          <input type="text" id="query-tx-hash" placeholder="Transaction hash" spellcheck="false">
+          <label class="query-check"><input type="checkbox" id="query-tx-results"> withResults</label>
+          <button id="query-tx-btn" class="btn-apply">Look up</button>
+        </div>
+      </div>
+      <div id="tab-block" class="query-tab">
+        <div class="query-row">
+          <input type="number" id="query-block-nonce" placeholder="Nonce" min="0">
+          <input type="text" id="query-block-hash" placeholder="Block hash" spellcheck="false">
+          <label class="query-check"><input type="checkbox" id="query-block-txs"> withTxs</label>
+          <button id="query-block-btn" class="btn-apply">Look up</button>
+        </div>
+      </div>
+      <div id="query-result" class="query-result" style="display:none"></div>
     </div>
   </section>
 
@@ -61,8 +93,8 @@
       <span class="stat-value" id="count-transactions">0</span>
       <span class="stat-label">transactions</span>
     </div>
-    <div class="stat type-user_transaction">
-      <span class="stat-value" id="count-user_transaction">0</span>
+    <div class="stat type-user_transactions">
+      <span class="stat-value" id="count-user_transactions">0</span>
       <span class="stat-label">user txn</span>
     </div>
     <div class="stat type-accounts">
@@ -75,7 +107,7 @@
     <span class="filter-label">Display</span>
     <label><input type="checkbox" value="blocks" checked> blocks</label>
     <label><input type="checkbox" value="transactions" checked> transactions</label>
-    <label><input type="checkbox" value="user_transaction" checked> user_transaction</label>
+    <label><input type="checkbox" value="user_transactions" checked> user_transactions</label>
     <label><input type="checkbox" value="accounts" checked> accounts</label>
   </section>
 
