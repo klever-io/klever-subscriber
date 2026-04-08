@@ -76,9 +76,10 @@
     var dirty =
       JSON.stringify(types) !== JSON.stringify(serverTypes) ||
       JSON.stringify(addrs) !== JSON.stringify(serverAddresses);
+    var hasSelection = types.length > 0 || addrs.length > 0;
     applyBtn.disabled = !dirty;
-    addBtn.disabled = !dirty;
-    removeBtn.disabled = !dirty;
+    addBtn.disabled = !hasSelection;
+    removeBtn.disabled = !hasSelection;
   }
 
   subCheckboxes.forEach(function (cb) {
@@ -189,13 +190,7 @@
         if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
         return r.json();
       })
-      .then(function (resp) {
-        serverTypes = resp.types || [];
-        serverAddresses = resp.addresses || [];
-        syncCheckboxes();
-        checkDirty();
-        updateSubscriptionDisplay();
-      })
+      .then(handleSubscriptionResponse)
       .catch(function (err) {
         console.error("unsubscribe error:", err);
         checkDirty();
