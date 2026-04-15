@@ -43,13 +43,15 @@ func New(maxClients int, isConnected func() bool, url string) *Broker {
 }
 
 func (b *Broker) HandleSSE(w http.ResponseWriter, r *http.Request) {
-	if int(b.sseCount.Load()) >= b.maxClients {
+	if int(b.sseCount.Add(1)) > b.maxClients {
+		b.sseCount.Add(-1)
 		http.Error(w, "too many SSE clients", http.StatusServiceUnavailable)
 		return
 	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		b.sseCount.Add(-1)
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
@@ -62,7 +64,6 @@ func (b *Broker) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	b.mu.Lock()
 	b.clients[c] = struct{}{}
 	b.mu.Unlock()
-	b.sseCount.Add(1)
 
 	defer func() {
 		b.sseCount.Add(-1)

@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -55,12 +56,18 @@ func TestStatsResponseJSON(t *testing.T) {
 }
 
 func TestNoCORSHeader(t *testing.T) {
-	b := New(0, func() bool { return false }, "")
-	b.sseCount.Store(0)
+	b := New(1, func() bool { return false }, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/events", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately so the SSE loop exits after headers are written
+
+	req := httptest.NewRequest(http.MethodGet, "/events", nil).WithContext(ctx)
 	rec := httptest.NewRecorder()
 	b.HandleSSE(rec, req)
+
+	if rec.Code == http.StatusServiceUnavailable {
+		t.Fatal("handler rejected request at capacity check; test is not exercising the SSE path")
+	}
 
 	cors := rec.Header().Get("Access-Control-Allow-Origin")
 	if cors != "" {

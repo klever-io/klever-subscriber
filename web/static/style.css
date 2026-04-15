@@ -146,8 +146,13 @@ input[type="number"] {
 }
 
 .title-thin {
-  font-weight: 400;
+  font-size: 13px;
+  font-weight: 300;
   color: var(--text-muted);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  align-self: flex-end;
+  padding-bottom: 2px;
 }
 
 .sidebar-body {
