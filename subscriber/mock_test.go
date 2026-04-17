@@ -2,7 +2,6 @@ package subscriber
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -108,7 +107,7 @@ func makeEvent(typ, hash, data string) rawEvent {
 	return rawEvent{
 		Type: typ,
 		Hash: hash,
-		Data: base64.StdEncoding.EncodeToString([]byte(data)),
+		Data: json.RawMessage(data),
 	}
 }
 

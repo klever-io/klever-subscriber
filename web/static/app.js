@@ -3,7 +3,11 @@
 
   var MAX_EVENTS = 500;
 
-  var statusEl = document.getElementById("status");
+  var statusDot = document.getElementById("status-dot");
+  var statusText = document.getElementById("status");
+  var statusDotStats = document.getElementById("status-dot-stats");
+  var statusStats = document.getElementById("status-stats");
+  var nodeUrlEl = document.getElementById("node-url");
   var epsEl = document.getElementById("eps");
   var totalEl = document.getElementById("total");
   var eventListEl = document.getElementById("event-list");
@@ -11,6 +15,12 @@
   var addBtn = document.getElementById("sub-add");
   var removeBtn = document.getElementById("sub-remove");
   var addrInput = document.getElementById("sub-addr");
+  var activeTypesEl = document.getElementById("active-types");
+  var activeAddrsEl = document.getElementById("active-addresses");
+  var configJsonEl = document.getElementById("config-json");
+  var clearEventsBtn = document.getElementById("clear-events-btn");
+  var copyConfigBtn = document.getElementById("copy-config-btn");
+  var refreshBtn = document.getElementById("refresh-btn");
 
   var countEls = {
     blocks: document.getElementById("count-blocks"),
@@ -29,10 +39,17 @@
   var serverTypes = [];
   var serverAddresses = [];
 
-  eventListEl.innerHTML =
-    '<div class="empty-state">Configure subscription above to start receiving events.</div>';
+  var toolTabs = document.querySelectorAll(".tool-tab");
+  var panes = document.querySelectorAll(".pane");
 
-  // --- Subscription panel ---
+  toolTabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      toolTabs.forEach(function (t) { t.classList.remove("active"); });
+      panes.forEach(function (p) { p.classList.remove("active"); });
+      tab.classList.add("active");
+      document.getElementById("pane-" + tab.dataset.tab).classList.add("active");
+    });
+  });
 
   var subCheckboxes = document.querySelectorAll('input[name="sub-type"]');
 
@@ -59,9 +76,10 @@
     var dirty =
       JSON.stringify(types) !== JSON.stringify(serverTypes) ||
       JSON.stringify(addrs) !== JSON.stringify(serverAddresses);
+    var hasSelection = types.length > 0 || addrs.length > 0;
     applyBtn.disabled = !dirty;
-    addBtn.disabled = !dirty;
-    removeBtn.disabled = !dirty;
+    addBtn.disabled = !hasSelection;
+    removeBtn.disabled = !hasSelection;
   }
 
   subCheckboxes.forEach(function (cb) {
@@ -69,97 +87,43 @@
   });
   addrInput.addEventListener("input", checkDirty);
 
-  applyBtn.addEventListener("click", function () {
-    applyBtn.disabled = true;
-    var payload = {
-      types: getSelectedTypes(),
-      addresses: getAddresses(),
-    };
+  function escapeHTML(s) {
+    return s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
 
-    fetch("/subscription", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(function (r) {
-        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
-        return r.json();
-      })
-      .then(function (resp) {
-        serverTypes = resp.types || [];
-        serverAddresses = resp.addresses || [];
-        syncCheckboxes();
-        checkDirty();
-        if (serverTypes.length > 0) {
-          var empty = eventListEl.querySelector(".empty-state");
-          if (empty) empty.textContent = "Waiting for events...";
-        }
-      })
-      .catch(function (err) {
-        console.error("subscription error:", err);
-        checkDirty();
-      });
-  });
+  function updateConfigDisplay() {
+    var config = { types: serverTypes, addresses: serverAddresses };
+    configJsonEl.innerHTML = highlightJSON(config);
+  }
 
-  addBtn.addEventListener("click", function () {
-    addBtn.disabled = true;
-    var payload = {
-      types: getSelectedTypes(),
-      addresses: getAddresses(),
-    };
+  function updateSubscriptionDisplay() {
+    if (serverTypes.length === 0) {
+      activeTypesEl.innerHTML = '<div class="empty-msg">None</div>';
+    } else {
+      activeTypesEl.innerHTML = serverTypes
+        .map(function (t) {
+          return '<div class="card-item"><span class="card-dot ' + escapeHTML(t) + '"></span><span class="card-label">' + escapeHTML(t) + "</span></div>";
+        })
+        .join("");
+    }
 
-    fetch("/subscription/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(function (r) {
-        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
-        return r.json();
-      })
-      .then(function (resp) {
-        serverTypes = resp.types || [];
-        serverAddresses = resp.addresses || [];
-        syncCheckboxes();
-        checkDirty();
-        if (serverTypes.length > 0) {
-          var empty = eventListEl.querySelector(".empty-state");
-          if (empty) empty.textContent = "Waiting for events...";
-        }
-      })
-      .catch(function (err) {
-        console.error("subscribe error:", err);
-        checkDirty();
-      });
-  });
+    if (serverAddresses.length === 0) {
+      activeAddrsEl.innerHTML = '<div class="empty-msg">None</div>';
+    } else {
+      activeAddrsEl.innerHTML = serverAddresses
+        .map(function (a) {
+          return '<div class="card-item"><span class="card-label mono">' + escapeHTML(a) + "</span></div>";
+        })
+        .join("");
+    }
 
-  removeBtn.addEventListener("click", function () {
-    removeBtn.disabled = true;
-    var payload = {
-      types: getSelectedTypes(),
-      addresses: getAddresses(),
-    };
-
-    fetch("/subscription/unsubscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(function (r) {
-        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
-        return r.json();
-      })
-      .then(function (resp) {
-        serverTypes = resp.types || [];
-        serverAddresses = resp.addresses || [];
-        syncCheckboxes();
-        checkDirty();
-      })
-      .catch(function (err) {
-        console.error("unsubscribe error:", err);
-        checkDirty();
-      });
-  });
+    updateConfigDisplay();
+  }
 
   function syncCheckboxes() {
     subCheckboxes.forEach(function (cb) {
@@ -168,6 +132,72 @@
     addrInput.value = serverAddresses.join(", ");
   }
 
+  function handleSubscriptionResponse(resp) {
+    serverTypes = resp.types || [];
+    serverAddresses = resp.addresses || [];
+    syncCheckboxes();
+    checkDirty();
+    updateSubscriptionDisplay();
+    if (serverTypes.length > 0) {
+      var empty = eventListEl.querySelector(".empty-state");
+      if (empty) empty.textContent = "Waiting for events\u2026";
+    }
+  }
+
+  applyBtn.addEventListener("click", function () {
+    applyBtn.disabled = true;
+    fetch("/subscription", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ types: getSelectedTypes(), addresses: getAddresses() }),
+    })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(handleSubscriptionResponse)
+      .catch(function (err) {
+        console.error("subscription error:", err);
+        checkDirty();
+      });
+  });
+
+  addBtn.addEventListener("click", function () {
+    addBtn.disabled = true;
+    fetch("/subscription/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ types: getSelectedTypes(), addresses: getAddresses() }),
+    })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(handleSubscriptionResponse)
+      .catch(function (err) {
+        console.error("subscribe error:", err);
+        checkDirty();
+      });
+  });
+
+  removeBtn.addEventListener("click", function () {
+    removeBtn.disabled = true;
+    fetch("/subscription/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ types: getSelectedTypes(), addresses: getAddresses() }),
+    })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(handleSubscriptionResponse)
+      .catch(function (err) {
+        console.error("unsubscribe error:", err);
+        checkDirty();
+      });
+  });
+
   function loadSubscription() {
     fetch("/subscription")
       .then(function (r) { return r.json(); })
@@ -175,30 +205,37 @@
         serverTypes = s.types || [];
         serverAddresses = s.addresses || [];
         syncCheckboxes();
-
+        updateSubscriptionDisplay();
         if (serverTypes.length > 0) {
           var empty = eventListEl.querySelector(".empty-state");
-          if (empty) empty.textContent = "Waiting for events...";
+          if (empty) empty.textContent = "Waiting for events\u2026";
         }
-
         checkDirty();
       })
       .catch(function () {});
   }
 
-  // --- Query panel ---
+  refreshBtn.addEventListener("click", function () {
+    loadSubscription();
+  });
 
-  var tabBtns = document.querySelectorAll(".tab-btn");
-  var queryTabs = document.querySelectorAll(".query-tab");
-  var queryResult = document.getElementById("query-result");
+  clearEventsBtn.addEventListener("click", function () {
+    eventListEl.innerHTML = '<div class="empty-state">No events.</div>';
+  });
 
-  tabBtns.forEach(function (btn) {
+  copyConfigBtn.addEventListener("click", function () {
+    var config = JSON.stringify({ types: serverTypes, addresses: serverAddresses }, null, 2);
+    navigator.clipboard.writeText(config).catch(function () {});
+  });
+
+  document.querySelectorAll(".copy-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      tabBtns.forEach(function (b) { b.classList.remove("active"); });
-      queryTabs.forEach(function (t) { t.classList.remove("active"); });
-      btn.classList.add("active");
-      document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
-      queryResult.style.display = "none";
+      var targetId = btn.dataset.target;
+      var el = document.getElementById(targetId);
+      if (el) {
+        var pre = el.querySelector("pre");
+        if (pre) navigator.clipboard.writeText(pre.textContent).catch(function () {});
+      }
     });
   });
 
@@ -206,10 +243,10 @@
     var hash = document.getElementById("query-tx-hash").value.trim();
     if (!hash) return;
     var withRes = document.getElementById("query-tx-results").checked;
+    var resultEl = document.getElementById("query-tx-result");
 
-    queryResult.style.display = "block";
-    queryResult.className = "query-result loading";
-    queryResult.textContent = "Loading...";
+    resultEl.className = "col-body result-body loading";
+    resultEl.textContent = "Loading\u2026";
 
     fetch("/api/transaction", {
       method: "POST",
@@ -221,12 +258,12 @@
         return r.json();
       })
       .then(function (data) {
-        queryResult.className = "query-result";
-        queryResult.innerHTML = '<pre>' + highlightJSON(data) + '</pre>';
+        resultEl.className = "col-body result-body";
+        resultEl.innerHTML = "<pre>" + highlightJSON(data) + "</pre>";
       })
       .catch(function (err) {
-        queryResult.className = "query-result error";
-        queryResult.textContent = err.message;
+        resultEl.className = "col-body result-body error";
+        resultEl.textContent = err.message;
       });
   });
 
@@ -240,9 +277,9 @@
     if (nonceVal) payload.nonce = parseInt(nonceVal, 10);
     if (hashVal) payload.hash = hashVal;
 
-    queryResult.style.display = "block";
-    queryResult.className = "query-result loading";
-    queryResult.textContent = "Loading...";
+    var resultEl = document.getElementById("query-block-result");
+    resultEl.className = "col-body result-body loading";
+    resultEl.textContent = "Loading\u2026";
 
     fetch("/api/block", {
       method: "POST",
@@ -254,16 +291,14 @@
         return r.json();
       })
       .then(function (data) {
-        queryResult.className = "query-result";
-        queryResult.innerHTML = '<pre>' + highlightJSON(data) + '</pre>';
+        resultEl.className = "col-body result-body";
+        resultEl.innerHTML = "<pre>" + highlightJSON(data) + "</pre>";
       })
       .catch(function (err) {
-        queryResult.className = "query-result error";
-        queryResult.textContent = err.message;
+        resultEl.className = "col-body result-body error";
+        resultEl.textContent = err.message;
       });
   });
-
-  // --- Display filter checkboxes ---
 
   document.querySelectorAll("#filters input").forEach(function (cb) {
     cb.addEventListener("change", function () {
@@ -275,23 +310,20 @@
   function applyFilters() {
     var items = eventListEl.querySelectorAll(".event-item");
     items.forEach(function (el) {
-      var evtType = el.dataset.type;
-      el.style.display = filters[evtType] ? "" : "none";
+      el.style.display = filters[el.dataset.type] ? "" : "none";
     });
   }
-
-  // --- JSON syntax highlighting ---
 
   function highlightJSON(obj, indent) {
     if (indent === undefined) indent = 0;
     var pad = "  ".repeat(indent);
-    if (obj === null) return '<span class="json-null">null</span>';
+    if (obj === null) return '<span class="j-null">null</span>';
     if (typeof obj === "boolean")
-      return '<span class="json-bool">' + obj + "</span>";
+      return '<span class="j-bool">' + obj + "</span>";
     if (typeof obj === "number")
-      return '<span class="json-number">' + obj + "</span>";
+      return '<span class="j-num">' + obj + "</span>";
     if (typeof obj === "string")
-      return '<span class="json-string">"' + escapeHTML(obj) + '"</span>';
+      return '<span class="j-str">"' + escapeHTML(obj) + '"</span>';
 
     if (Array.isArray(obj)) {
       if (obj.length === 0) return "[]";
@@ -306,7 +338,7 @@
     var entries = keys.map(function (k) {
       return (
         pad +
-        '  <span class="json-key">"' +
+        '  <span class="j-key">"' +
         escapeHTML(k) +
         '"</span>: ' +
         highlightJSON(obj[k], indent + 1)
@@ -315,40 +347,29 @@
     return "{\n" + entries.join(",\n") + "\n" + pad + "}";
   }
 
-  function escapeHTML(s) {
-    return s
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
   function normalizeEvent(evt) {
-    // If data is a JSON string, parse it into an object.
     if (typeof evt.data === "string") {
       try {
         evt.data = JSON.parse(evt.data);
-      } catch (e) {
-        // keep as-is if not valid JSON
-      }
+      } catch (e) {}
     }
 
-    // If the parsed data contains a nested structure with type/data,
-    // lift the fields up (e.g. { type: "", data: { type: "blocks", data: {...} } }).
-    if (evt.data && typeof evt.data === "object" && evt.data.type && evt.data.data !== undefined) {
+    if (
+      evt.data &&
+      typeof evt.data === "object" &&
+      evt.data.type &&
+      evt.data.data !== undefined
+    ) {
       if (!evt.type) evt.type = evt.data.type;
       if (!evt.hash && evt.data.hash) evt.hash = evt.data.hash;
       if (!evt.address && evt.data.address) evt.address = evt.data.address;
       evt.data = evt.data.data;
     }
 
-    // If data is still a JSON string after first parse, parse again.
     if (typeof evt.data === "string") {
       try {
         evt.data = JSON.parse(evt.data);
-      } catch (e) {
-        // keep as-is
-      }
+      } catch (e) {}
     }
 
     return evt;
@@ -364,26 +385,35 @@
     div.className = "event-item";
     div.dataset.type = evt.type || "";
 
-    var typeSpan =
-      '<span class="event-type ' +
+    var header = document.createElement("div");
+    header.className = "event-header";
+
+    var badge =
+      '<span class="ev-badge ' +
       escapeHTML(evt.type || "") +
       '">' +
       escapeHTML(evt.type || "unknown") +
       "</span>";
-
     var hashSpan = "";
     if (evt.hash) {
-      hashSpan =
-        '<span class="event-hash">' + escapeHTML(evt.hash) + "</span>";
+      hashSpan = '<span class="ev-hash">' + escapeHTML(evt.hash) + "</span>";
     }
+    var arrow = '<span class="ev-arrow">&#9654;</span>';
 
-    var dataHtml = "";
+    header.innerHTML =
+      badge + hashSpan + '<span class="ev-spacer"></span>' + arrow;
+    div.appendChild(header);
+
     if (evt.data !== undefined && evt.data !== null) {
-      dataHtml =
-        '<span class="event-data">' + highlightJSON(evt.data) + "</span>";
+      var body = document.createElement("div");
+      body.className = "event-body";
+      body.innerHTML = "<pre>" + highlightJSON(evt.data) + "</pre>";
+      div.appendChild(body);
     }
 
-    div.innerHTML = typeSpan + hashSpan + dataHtml;
+    header.addEventListener("click", function () {
+      div.classList.toggle("expanded");
+    });
 
     if (!filters[evt.type]) {
       div.style.display = "none";
@@ -396,47 +426,57 @@
     }
   }
 
-  // --- SSE connection ---
-
   function connectSSE() {
     var es = new EventSource("/events");
 
     es.onopen = function () {
-      statusEl.textContent = "Connected";
-      statusEl.className = "badge connected";
+      statusText.textContent = "Connected";
+      statusDot.className = "status-dot connected";
     };
 
     es.onmessage = function (e) {
       try {
-        var evt = JSON.parse(e.data);
-        addEvent(evt);
-      } catch (err) {
-        // Ignore parse errors.
-      }
+        addEvent(JSON.parse(e.data));
+      } catch (err) {}
     };
 
     es.onerror = function () {
-      statusEl.textContent = "Disconnected";
-      statusEl.className = "badge disconnected";
+      statusText.textContent = "Disconnected";
+      statusDot.className = "status-dot disconnected";
     };
   }
 
-  // --- Poll stats ---
-
   function pollStats() {
     fetch("/stats")
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        return r.json();
+      })
       .then(function (s) {
         if (s.connected) {
-          statusEl.textContent = "Connected";
-          statusEl.className = "badge connected";
+          statusText.textContent = "Connected";
+          statusDot.className = "status-dot connected";
+          statusDotStats.className = "status-dot connected";
+          statusStats.textContent = "Connected";
         } else if (serverTypes.length > 0) {
-          statusEl.textContent = "Disconnected";
-          statusEl.className = "badge disconnected";
+          statusText.textContent = "Disconnected";
+          statusDot.className = "status-dot disconnected";
+          statusDotStats.className = "status-dot disconnected";
+          statusStats.textContent = "Disconnected";
         }
         epsEl.textContent = (s.eventsPerSec || 0).toFixed(1);
         totalEl.textContent = s.total || 0;
-        var types = ["blocks", "transactions", "user_transactions", "accounts"];
+
+        if (s.url) {
+          nodeUrlEl.textContent = s.url;
+          nodeUrlEl.title = s.url;
+        }
+
+        var types = [
+          "blocks",
+          "transactions",
+          "user_transactions",
+          "accounts",
+        ];
         types.forEach(function (t) {
           if (countEls[t]) {
             countEls[t].textContent = (s.counts && s.counts[t]) || 0;
@@ -445,8 +485,6 @@
       })
       .catch(function () {});
   }
-
-  // --- Init ---
 
   loadSubscription();
   connectSSE();

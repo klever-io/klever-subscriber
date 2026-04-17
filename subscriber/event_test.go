@@ -1,7 +1,6 @@
 package subscriber
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"testing"
 )
@@ -17,48 +16,48 @@ func TestDecodeEvent(t *testing.T) {
 		wantErr   bool
 	}{
 		{
-			name: "valid base64 json data",
+			name: "json object data",
 			input: rawEvent{
 				Type: "blocks",
 				Hash: "abc123",
-				Data: base64.StdEncoding.EncodeToString([]byte(`{"height":100}`)),
+				Data: json.RawMessage(`{"height":100}`),
 			},
 			wantType: EventBlocks,
 			wantHash: "abc123",
 			wantData: map[string]any{"height": float64(100)},
 		},
 		{
-			name: "valid base64 non-json data",
+			name: "json string data",
 			input: rawEvent{
 				Type: "transactions",
 				Hash: "tx123",
-				Data: base64.StdEncoding.EncodeToString([]byte("plain text data")),
+				Data: json.RawMessage(`"plain text data"`),
 			},
 			wantType: EventTransactions,
 			wantHash: "tx123",
 			wantData: "plain text data",
 		},
 		{
-			name: "invalid base64 fallback to raw string",
+			name: "json number data",
 			input: rawEvent{
 				Type: "accounts",
 				Hash: "acct1",
-				Data: "not-valid-base64!!!",
+				Data: json.RawMessage(`42`),
 			},
 			wantType: EventAccounts,
 			wantHash: "acct1",
-			wantData: "not-valid-base64!!!",
+			wantData: float64(42),
 		},
 		{
-			name: "empty data field",
+			name: "null data field",
 			input: rawEvent{
 				Type: "blocks",
 				Hash: "h1",
-				Data: "",
+				Data: json.RawMessage(`null`),
 			},
 			wantType: EventBlocks,
 			wantHash: "h1",
-			wantData: "",
+			wantData: nil,
 		},
 		{
 			name: "with address",
@@ -66,7 +65,7 @@ func TestDecodeEvent(t *testing.T) {
 				Type:    "user_transactions",
 				Hash:    "utx1",
 				Address: "klv1abc",
-				Data:    base64.StdEncoding.EncodeToString([]byte(`{"amount":50}`)),
+				Data:    json.RawMessage(`{"amount":50}`),
 			},
 			wantType: EventUserTransactions,
 			wantHash: "utx1",
@@ -74,11 +73,11 @@ func TestDecodeEvent(t *testing.T) {
 			wantData: map[string]any{"amount": float64(50)},
 		},
 		{
-			name: "base64 json array",
+			name: "json array",
 			input: rawEvent{
 				Type: "blocks",
 				Hash: "arr1",
-				Data: base64.StdEncoding.EncodeToString([]byte(`[1,2,3]`)),
+				Data: json.RawMessage(`[1,2,3]`),
 			},
 			wantType: EventBlocks,
 			wantHash: "arr1",
@@ -89,7 +88,7 @@ func TestDecodeEvent(t *testing.T) {
 			input: rawEvent{
 				Type: "transactions",
 				Hash: "nested1",
-				Data: base64.StdEncoding.EncodeToString([]byte(`{"tx":{"sender":"klv1a","receiver":"klv1b"}}`)),
+				Data: json.RawMessage(`{"tx":{"sender":"klv1a","receiver":"klv1b"}}`),
 			},
 			wantType: EventTransactions,
 			wantHash: "nested1",
@@ -140,6 +139,15 @@ func TestDecodeEvent(t *testing.T) {
 				t.Error("Raw should be set to the original message bytes")
 			}
 		})
+	}
+}
+
+func TestDecodeEvent_InvalidDataField(t *testing.T) {
+	// Wire message where data field contains invalid JSON
+	raw := []byte(`{"type":"accounts","hash":"h1","data":not-valid-json}`)
+	_, err := DecodeEvent(raw)
+	if err == nil {
+		t.Fatal("expected error for malformed outer JSON, got nil")
 	}
 }
 

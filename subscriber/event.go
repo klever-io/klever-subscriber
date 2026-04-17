@@ -1,7 +1,6 @@
 package subscriber
 
 import (
-	"encoding/base64"
 	"encoding/json"
 )
 
@@ -9,19 +8,19 @@ import (
 type EventType string
 
 const (
-	EventBlocks          EventType = "blocks"
-	EventTransactions    EventType = "transactions"
+	EventBlocks           EventType = "blocks"
+	EventTransactions     EventType = "transactions"
 	EventUserTransactions EventType = "user_transactions"
-	EventAccounts        EventType = "accounts"
+	EventAccounts         EventType = "accounts"
 )
 
 // ValidEventTypes returns the set of known event types.
 func ValidEventTypes() map[EventType]bool {
 	return map[EventType]bool{
-		EventBlocks:          true,
-		EventTransactions:    true,
+		EventBlocks:           true,
+		EventTransactions:     true,
 		EventUserTransactions: true,
-		EventAccounts:        true,
+		EventAccounts:         true,
 	}
 }
 
@@ -34,12 +33,12 @@ type Event struct {
 	Raw     []byte    `json:"-"`
 }
 
-// rawEvent represents the wire format from the node (Data is base64-encoded).
+// rawEvent represents the wire format from the node.
 type rawEvent struct {
-	Type    string `json:"type"`
-	Address string `json:"address"`
-	Hash    string `json:"hash"`
-	Data    string `json:"data"`
+	Type    string          `json:"type"`
+	Address string          `json:"address"`
+	Hash    string          `json:"hash"`
+	Data    json.RawMessage `json:"data"`
 }
 
 // DecodeEvent decodes a raw WebSocket message into an Event.
@@ -56,16 +55,11 @@ func DecodeEvent(message []byte) (Event, error) {
 		Raw:     message,
 	}
 
-	dataBytes, err := base64.StdEncoding.DecodeString(raw.Data)
-	if err != nil {
-		evt.Data = raw.Data
+	var jsonData any
+	if err := json.Unmarshal(raw.Data, &jsonData); err != nil {
+		evt.Data = string(raw.Data)
 	} else {
-		var jsonData any
-		if err := json.Unmarshal(dataBytes, &jsonData); err != nil {
-			evt.Data = string(dataBytes)
-		} else {
-			evt.Data = jsonData
-		}
+		evt.Data = jsonData
 	}
 
 	return evt, nil
