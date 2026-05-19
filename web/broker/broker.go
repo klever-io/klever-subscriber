@@ -210,6 +210,25 @@ func (b *Broker) rateSnapshot(now int64) uint64 {
 	return sum
 }
 
+// BroadcastSubscription pushes the current subscription set as a typed
+// SSE frame so every open dashboard tab stays in sync after a Reconfigure
+// / AddSubscriptions / RemoveSubscriptions call from any tab or API
+// consumer.
+func (b *Broker) BroadcastSubscription(types []subscriber.EventType, addresses []string) {
+	payload := struct {
+		Types     []subscriber.EventType `json:"types"`
+		Addresses []string               `json:"addresses"`
+	}{
+		Types:     types,
+		Addresses: addresses,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	b.broadcast(sseFrame{event: "subscription", data: data})
+}
+
 func (b *Broker) broadcast(f sseFrame) {
 	b.clientsMu.RLock()
 	for c := range b.clients {

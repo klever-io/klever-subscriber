@@ -438,14 +438,18 @@
     }
   }
 
-  function applyStats(s) {
-    if (!s) return;
-    var label = s.connected ? "Connected" : "Disconnected";
-    var cls = "status-dot " + (s.connected ? "connected" : "disconnected");
+  function setStatus(connected) {
+    var label = connected ? "Connected" : "Disconnected";
+    var cls = "status-dot " + (connected ? "connected" : "disconnected");
     statusText.textContent = label;
     statusDot.className = cls;
     statusDotStats.className = cls;
     statusStats.textContent = label;
+  }
+
+  function applyStats(s) {
+    if (!s) return;
+    setStatus(!!s.connected);
     epsEl.textContent = (s.eventsPerSec || 0).toFixed(1);
     totalEl.textContent = s.total || 0;
 
@@ -465,10 +469,9 @@
   function connectSSE() {
     var es = new EventSource("/events");
 
-    es.onopen = function () {
-      statusText.textContent = "Connected";
-      statusDot.className = "status-dot connected";
-    };
+    // Don't preemptively claim "Connected" on SSE open — the broker
+    // sends an initial stats frame within milliseconds that reflects
+    // the real upstream-node state (which is what the user cares about).
 
     es.onmessage = function (e) {
       try {
@@ -482,9 +485,16 @@
       } catch (err) {}
     });
 
+    es.addEventListener("subscription", function (e) {
+      try {
+        handleSubscriptionResponse(JSON.parse(e.data));
+      } catch (err) {}
+    });
+
     es.onerror = function () {
-      statusText.textContent = "Disconnected";
-      statusDot.className = "status-dot disconnected";
+      // SSE dropped — we no longer know the node state, so reflect
+      // "Disconnected" across both the top badge and the Stats panel.
+      setStatus(false);
     };
   }
 

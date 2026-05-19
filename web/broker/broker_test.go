@@ -145,3 +145,39 @@ func waitFrame(ch <-chan sseFrame, d time.Duration) (sseFrame, error) {
 		return sseFrame{}, context.DeadlineExceeded
 	}
 }
+
+func TestBroadcastSubscription(t *testing.T) {
+	b := New(1, func() bool { return true }, "")
+
+	c := &client{frames: make(chan sseFrame, 4)}
+	b.clientsMu.Lock()
+	b.clients[c] = struct{}{}
+	b.clientsMu.Unlock()
+
+	b.BroadcastSubscription(
+		[]subscriber.EventType{subscriber.EventBlocks, subscriber.EventAccounts},
+		[]string{"klv1abc"},
+	)
+
+	f, err := waitFrame(c.frames, time.Second)
+	if err != nil {
+		t.Fatalf("no subscription frame: %v", err)
+	}
+	if f.event != "subscription" {
+		t.Errorf("event = %q, want %q", f.event, "subscription")
+	}
+
+	var got struct {
+		Types     []subscriber.EventType `json:"types"`
+		Addresses []string               `json:"addresses"`
+	}
+	if err := json.Unmarshal(f.data, &got); err != nil {
+		t.Fatalf("payload not JSON: %v", err)
+	}
+	if len(got.Types) != 2 || got.Types[0] != subscriber.EventBlocks || got.Types[1] != subscriber.EventAccounts {
+		t.Errorf("types = %v, want [blocks accounts]", got.Types)
+	}
+	if len(got.Addresses) != 1 || got.Addresses[0] != "klv1abc" {
+		t.Errorf("addresses = %v, want [klv1abc]", got.Addresses)
+	}
+}

@@ -43,7 +43,9 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	qh := handler.NewQueryHandler(s.sub)
-	sh := handler.NewSubscriptionHandler(s.sub)
+	sh := handler.NewSubscriptionHandler(s.sub, func() {
+		s.broker.BroadcastSubscription(s.sub.Types(), s.sub.Addresses())
+	})
 
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))

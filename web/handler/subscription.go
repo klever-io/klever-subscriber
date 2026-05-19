@@ -10,11 +10,21 @@ import (
 )
 
 type SubscriptionHandler struct {
-	sub *subscriber.Subscriber
+	sub      *subscriber.Subscriber
+	onChange func()
 }
 
-func NewSubscriptionHandler(sub *subscriber.Subscriber) *SubscriptionHandler {
-	return &SubscriptionHandler{sub: sub}
+// NewSubscriptionHandler returns a handler bound to sub. The optional
+// onChange callback fires after every successful mutation so callers can
+// fan the new subscription state out to other observers (e.g. SSE clients).
+func NewSubscriptionHandler(sub *subscriber.Subscriber, onChange func()) *SubscriptionHandler {
+	return &SubscriptionHandler{sub: sub, onChange: onChange}
+}
+
+func (h *SubscriptionHandler) notify() {
+	if h.onChange != nil {
+		h.onChange()
+	}
 }
 
 type subscriptionPayload struct {
@@ -73,6 +83,7 @@ func (h *SubscriptionHandler) HandleSubscription(w http.ResponseWriter, r *http.
 		}
 
 		h.sub.Reconfigure(req.Types, req.Addresses)
+		h.notify()
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(req)
@@ -101,6 +112,7 @@ func (h *SubscriptionHandler) HandleDynamicSubscribe(w http.ResponseWriter, r *h
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	h.notify()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(subscriptionPayload{
@@ -128,6 +140,7 @@ func (h *SubscriptionHandler) HandleDynamicUnsubscribe(w http.ResponseWriter, r 
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	h.notify()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(subscriptionPayload{
