@@ -60,9 +60,9 @@ func WithQueryOnly() Option {
 }
 
 type Subscription struct {
-	ch       chan Event
-	sub      *Subscriber
-	closeMu  sync.Once
+	ch      chan Event
+	sub     *Subscriber
+	closeMu sync.Once
 }
 
 func (s *Subscription) C() <-chan Event {

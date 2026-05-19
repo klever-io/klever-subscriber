@@ -7,13 +7,13 @@ import (
 
 func TestDecodeEvent(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     rawEvent
-		wantType  EventType
-		wantHash  string
-		wantAddr  string
-		wantData  any
-		wantErr   bool
+		name     string
+		input    rawEvent
+		wantType EventType
+		wantHash string
+		wantAddr string
+		wantData any
+		wantErr  bool
 	}{
 		{
 			name: "json object data",
