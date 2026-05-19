@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"time"
 
@@ -34,8 +35,12 @@ func NewServer(addr string, sub *subscriber.Subscriber) *Server {
 func (s *Server) Start(ctx context.Context) error {
 	subscription := s.sub.Subscribe()
 	go s.broker.ProcessEvents(ctx, subscription.C())
+	go s.broker.StartStatsLoop(ctx, 2*time.Second)
 
-	staticFS, _ := fs.Sub(staticFiles, "static")
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		return fmt.Errorf("static assets: %w", err)
+	}
 
 	qh := handler.NewQueryHandler(s.sub)
 	sh := handler.NewSubscriptionHandler(s.sub)
@@ -63,11 +68,12 @@ func (s *Server) Start(ctx context.Context) error {
 		subscription.Close()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		srv.Shutdown(shutdownCtx)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("web server shutdown: %v", err)
+		}
 	}()
 
-	err := srv.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("web server: %w", err)
 	}
 	return nil

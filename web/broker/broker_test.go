@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/klever-io/klever-subscriber/subscriber"
 )
@@ -72,5 +75,73 @@ func TestNoCORSHeader(t *testing.T) {
 	cors := rec.Header().Get("Access-Control-Allow-Origin")
 	if cors != "" {
 		t.Errorf("expected no CORS header, got %q", cors)
+	}
+}
+
+func TestHandleSSESendsInitialStatsFrame(t *testing.T) {
+	b := New(1, func() bool { return true }, "wss://example/subscribe")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req := httptest.NewRequest(http.MethodGet, "/events", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	b.HandleSSE(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: stats\n") {
+		t.Fatalf("expected initial stats frame, body=%q", body)
+	}
+	if !strings.Contains(body, `"connected":true`) {
+		t.Errorf("stats payload missing connected:true, body=%q", body)
+	}
+	if !strings.Contains(body, `"url":"wss://example/subscribe"`) {
+		t.Errorf("stats payload missing url, body=%q", body)
+	}
+}
+
+func TestStartStatsLoopPushesOnStateChange(t *testing.T) {
+	var connected atomic.Bool
+	b := New(1, func() bool { return connected.Load() }, "")
+
+	c := &client{frames: make(chan sseFrame, 4)}
+	b.clientsMu.Lock()
+	b.clients[c] = struct{}{}
+	b.clientsMu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go b.StartStatsLoop(ctx, 50*time.Millisecond)
+
+	// Heartbeat frame should arrive within a few ticks.
+	first, err := waitFrame(c.frames, time.Second)
+	if err != nil {
+		t.Fatalf("no heartbeat frame: %v", err)
+	}
+	if first.event != "stats" {
+		t.Errorf("event = %q, want %q", first.event, "stats")
+	}
+	if !strings.Contains(string(first.data), `"connected":false`) {
+		t.Errorf("first heartbeat should report disconnected, got %s", first.data)
+	}
+
+	// Flip the state — loop should push immediately on transition.
+	connected.Store(true)
+	next, err := waitFrame(c.frames, time.Second)
+	if err != nil {
+		t.Fatalf("no transition frame: %v", err)
+	}
+	if !strings.Contains(string(next.data), `"connected":true`) {
+		t.Errorf("transition frame should report connected, got %s", next.data)
+	}
+}
+
+func waitFrame(ch <-chan sseFrame, d time.Duration) (sseFrame, error) {
+	select {
+	case f := <-ch:
+		return f, nil
+	case <-time.After(d):
+		return sseFrame{}, context.DeadlineExceeded
 	}
 }

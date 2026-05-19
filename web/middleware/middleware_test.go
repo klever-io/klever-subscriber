@@ -23,7 +23,7 @@ func TestSecurityHeaders(t *testing.T) {
 		{"X-Content-Type-Options", "nosniff"},
 		{"X-Frame-Options", "DENY"},
 		{"Referrer-Policy", "no-referrer"},
-		{"Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'"},
+		{"Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"},
 	}
 
 	for _, tt := range tests {

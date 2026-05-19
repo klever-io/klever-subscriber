@@ -1,6 +1,16 @@
 # klever-subscriber
 
-A CLI tool and Go library for connecting to a Klever node's WebSocket endpoint and streaming events in real time. Includes an optional built-in web dashboard with live event streaming, stats, and filters.
+A reference implementation of a Klever node WebSocket client. Ships as:
+
+- a **Go library** (`subscriber` package) for embedding in your own service
+- a **CLI** for streaming events to stdout
+- an optional **local web dashboard** for inspecting what the subscriber is doing
+
+This project is intended as a starting point and debugging aid for teams building on
+Klever. The dashboard is single-tenant by design — it reflects the live state of one
+subscriber process, with no per-user filtering or authentication. Embed the
+`subscriber` package in your service when you need that kind of isolation; see
+[`examples/`](./examples) for common patterns.
 
 ## Installation
 
@@ -92,7 +102,8 @@ The dashboard uses Server-Sent Events (SSE) for real-time streaming and requires
 
 ## Library Usage
 
-The `subscriber` package can be imported directly:
+See [`examples/`](./examples) for runnable patterns (streaming, reconnect
+handling, one-shot queries). A minimal embed looks like this:
 
 ```go
 package main

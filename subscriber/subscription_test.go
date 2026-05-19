@@ -124,6 +124,92 @@ func TestSubscriber_RemoveSubscriptions(t *testing.T) {
 	cancel()
 }
 
+func TestSubscriber_ReconfigureReplaceAddressOnly(t *testing.T) {
+	type captured struct {
+		method string
+		params map[string]json.RawMessage
+	}
+	var calls []captured
+	var callsMu sync.Mutex
+
+	mock := &mockServer{
+		upgrader: websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+	}
+	mock.onRequest = func(conn *websocket.Conn, req Request) {
+		raw, _ := json.Marshal(req.Params)
+		var params map[string]json.RawMessage
+		_ = json.Unmarshal(raw, &params)
+		callsMu.Lock()
+		calls = append(calls, captured{method: req.Method, params: params})
+		callsMu.Unlock()
+
+		resp := Response{
+			ID:   req.ID,
+			Data: json.RawMessage(`"ok"`),
+		}
+		data, _ := json.Marshal(resp)
+		conn.WriteMessage(websocket.TextMessage, data)
+	}
+	mock.srv = httptest.NewServer(http.HandlerFunc(mock.handler))
+	defer mock.srv.Close()
+
+	host := strings.TrimPrefix(mock.srv.URL, "http://")
+	connected := make(chan struct{})
+	sub := New(host, []EventType{EventBlocks, EventAccounts},
+		WithAddresses([]string{"klv1old"}),
+		WithReconnectInterval(50*time.Millisecond),
+		WithOnConnect(func() {
+			select {
+			case <-connected:
+			default:
+				close(connected)
+			}
+		}),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	go sub.Start(ctx)
+	<-connected
+
+	// Replace All: same types, swap the only address.
+	sub.Reconfigure([]EventType{EventBlocks, EventAccounts}, []string{"klv1new"})
+
+	time.Sleep(250 * time.Millisecond)
+
+	callsMu.Lock()
+	got := append([]captured(nil), calls...)
+	callsMu.Unlock()
+
+	var unsub *captured
+	gotMethods := make([]string, 0, len(got))
+	for i := range got {
+		gotMethods = append(gotMethods, got[i].method)
+		if got[i].method == "unsubscribe" && unsub == nil {
+			unsub = &got[i]
+		}
+	}
+	if unsub == nil {
+		t.Fatalf("expected an unsubscribe call, got methods=%v", gotMethods)
+	}
+
+	if _, ok := unsub.params["types"]; ok {
+		t.Errorf("unsubscribe must not carry types field when removing addresses; params=%v", unsub.params)
+	}
+	addrsRaw, ok := unsub.params["addresses"]
+	if !ok {
+		t.Fatalf("unsubscribe missing addresses; params=%v", unsub.params)
+	}
+	var addrs []string
+	_ = json.Unmarshal(addrsRaw, &addrs)
+	if len(addrs) != 1 || addrs[0] != "klv1old" {
+		t.Errorf("unsubscribe addresses = %v, want [klv1old]", addrs)
+	}
+
+	cancel()
+}
+
 func TestSubscriber_ReconfigureDynamic(t *testing.T) {
 	var methods []string
 	var methodsMu sync.Mutex
