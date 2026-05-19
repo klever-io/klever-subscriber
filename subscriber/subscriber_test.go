@@ -173,30 +173,30 @@ func TestSubscriber_Connected(t *testing.T) {
 	mock := newMockServer(events)
 	defer mock.close()
 
+	var wasConnected atomic.Bool
 	sub := New(mock.host(), []EventType{EventBlocks},
 		WithReconnectInterval(50*time.Millisecond),
+		WithOnConnect(func() {
+			wasConnected.Store(true)
+		}),
 	)
 
 	if sub.Connected() {
 		t.Error("should not be connected before Start")
 	}
 
-	var wasConnected atomic.Bool
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	go sub.Start(ctx)
 
 	for evt := range sub.Events() {
-		if sub.Connected() {
-			wasConnected.Store(true)
-		}
 		_ = evt
 		cancel()
 	}
 
 	if !wasConnected.Load() {
-		t.Error("Connected() should be true while events are flowing")
+		t.Error("OnConnect should have fired during the run")
 	}
 }
 

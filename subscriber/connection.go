@@ -110,9 +110,17 @@ func (s *Subscriber) connect(ctx context.Context) error {
 		return conn.SetReadDeadline(time.Now().Add(readTimeout))
 	})
 
-	typeStrings := make([]string, len(types))
-	for i, t := range types {
-		typeStrings[i] = string(t)
+	// The Klever node rejects an empty subscribe ("subscribed_types must
+	// not be empty") and closes the socket, which would kill any
+	// pending request. For query-only clients we send a placeholder
+	// subscribe to an address-scoped type with no addresses so the node
+	// accepts the connection without delivering any events.
+	typeStrings := make([]string, 0, len(types))
+	for _, t := range types {
+		typeStrings = append(typeStrings, string(t))
+	}
+	if len(typeStrings) == 0 {
+		typeStrings = []string{string(EventAccounts)}
 	}
 	req := subscribeRequest{
 		Addresses: addrs,
