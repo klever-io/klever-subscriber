@@ -6,6 +6,7 @@
   "use strict";
 
   const MAX_EVENTS = 200;
+  const MAX_JSON_DEPTH = 32;
   const KNOWN_TYPES = ["blocks", "transactions", "user_transactions", "accounts"];
 
   // ---------- element refs ----------
@@ -31,10 +32,19 @@
   // ---------- tabs ----------
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-      document.querySelectorAll(".pane").forEach((p) => p.classList.remove("active"));
+      document.querySelectorAll(".tab").forEach((t) => {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
+      document.querySelectorAll(".pane").forEach((p) => {
+        p.classList.remove("active");
+        p.hidden = true;
+      });
       tab.classList.add("active");
-      $("pane-" + tab.dataset.tab).classList.add("active");
+      tab.setAttribute("aria-selected", "true");
+      const pane = $("pane-" + tab.dataset.tab);
+      pane.classList.add("active");
+      pane.hidden = false;
     });
   });
 
@@ -49,8 +59,23 @@
   function parsedAddresses() {
     return addrsEl.value.split(",").map((s) => s.trim()).filter(Boolean);
   }
+  // pretty serializes obj as indented JSON with a recursion cap so a
+  // pathological node payload can't OOM the tab.
   function pretty(obj) {
-    try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
+    try {
+      return JSON.stringify(capDepth(obj, MAX_JSON_DEPTH), null, 2);
+    } catch {
+      return String(obj);
+    }
+  }
+
+  function capDepth(value, depth) {
+    if (depth <= 0) return "…";
+    if (value === null || typeof value !== "object") return value;
+    if (Array.isArray(value)) return value.map((v) => capDepth(v, depth - 1));
+    const out = {};
+    for (const k of Object.keys(value)) out[k] = capDepth(value[k], depth - 1);
+    return out;
   }
   function badgeClass(t) { return KNOWN_TYPES.includes(t) ? t : ""; }
   function clearChildren(el) { while (el.firstChild) el.removeChild(el.firstChild); }
@@ -121,12 +146,16 @@
 
   // Block events keep .data as an object; transactions events keep .data as
   // an array of {hash, …}. user_transactions / accounts surface a top-level
-  // hash. Try each shape in turn.
+  // hash. Try each shape in turn. For tx arrays, show the first hash + a
+  // count so a 100-tx block doesn't render a kilobyte-long row.
   function extractHash(evt) {
     if (evt.hash) return evt.hash;
     if (evt.data && typeof evt.data === "object") {
       if (Array.isArray(evt.data)) {
-        return evt.data.map((e) => e && e.hash).filter(Boolean).join(", ");
+        const hashes = evt.data.map((e) => e && e.hash).filter(Boolean);
+        if (hashes.length === 0) return "";
+        if (hashes.length === 1) return hashes[0];
+        return `${hashes[0]} (+${hashes.length - 1} more)`;
       }
       if (evt.data.hash) return evt.data.hash;
     }
@@ -238,17 +267,17 @@
 
     statusEl.textContent = "sending…";
     statusEl.className = "muted";
-    resultEl.style.display = "none";
+    resultEl.classList.add("hidden");
 
     try {
       const data = await sub.request(method, params);
       statusEl.textContent = "ok";
-      resultEl.style.display = "";
+      resultEl.classList.remove("hidden");
       resultEl.textContent = pretty(data);
     } catch (err) {
       statusEl.textContent = err.message;
       statusEl.className = "err-text";
-      resultEl.style.display = "";
+      resultEl.classList.remove("hidden");
       resultEl.textContent = err.message;
     }
   });
@@ -271,7 +300,7 @@
 
     const resultEl = $("wait-result");
     const statusEl = $("wait-status");
-    resultEl.style.display = "none";
+    resultEl.classList.add("hidden");
     statusEl.textContent = "looking up…";
     statusEl.className = "muted";
 
@@ -283,7 +312,7 @@
         waiter = null;
         statusEl.textContent = "matched";
         statusEl.className = "muted";
-        resultEl.style.display = "";
+        resultEl.classList.remove("hidden");
         resultEl.textContent = pretty(data);
       },
       fail(err) {
@@ -297,13 +326,16 @@
 
     // Subscribe-then-query: ask the node if it already has the target so we
     // don't sit listening for an event that already happened.
+    // Capture the current waiter so a stale lookup result can't resolve a
+    // newer waiter created by a rapid second click.
+    const myWaiter = waiter;
     const lookup =
       kind === "block-nonce" ? sub.getBlock({ nonce: Number(value) }) :
       kind === "block-hash"  ? sub.getBlock({ hash: value }) :
                                sub.getTransaction(value);
 
     lookup.then(
-      (data) => { if (waiter) waiter.succeed(data); },
+      (data) => { if (waiter === myWaiter) myWaiter.succeed(data); },
       () => { /* not found — keep listening on the subscription */ }
     );
   }

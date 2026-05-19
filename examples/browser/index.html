@@ -22,7 +22,7 @@
           <label for="url">Node WebSocket URL</label>
           <input id="url" type="text" value="ws://localhost:8080/subscribe" spellcheck="false" />
 
-          <label style="margin-top: 10px">Event types</label>
+          <label class="mt-10">Event types</label>
           <div class="checks">
             <label><input type="checkbox" value="blocks" checked /> blocks</label>
             <label><input type="checkbox" value="transactions" /> transactions</label>
@@ -30,25 +30,25 @@
             <label><input type="checkbox" value="accounts" /> accounts</label>
           </div>
 
-          <label style="margin-top: 10px" for="addresses">Addresses (comma-separated, optional)</label>
+          <label class="mt-10" for="addresses">Addresses (comma-separated, optional)</label>
           <textarea id="addresses" placeholder="klv1..., klv1..."></textarea>
 
-          <div class="row" style="margin-top: 10px">
+          <div class="row mt-10">
             <button id="connect-btn">Connect</button>
             <button id="disconnect-btn" class="secondary" disabled>Disconnect</button>
-            <span class="status" style="margin-left: auto">
+            <span class="status push-right">
               <span id="status-dot" class="dot"></span>
               <span id="status-text">Idle</span>
             </span>
           </div>
 
-          <div class="row" style="margin-top: 6px">
+          <div class="row mt-6">
             <button id="sub-more-btn" class="secondary" disabled title="Send subscribe with the current form values — additive">Subscribe more</button>
             <button id="unsub-btn" class="secondary" disabled title="Send unsubscribe with the current form values — subtractive">Unsubscribe</button>
-            <span id="mutation-status" class="muted" style="margin-left: auto"></span>
+            <span id="mutation-status" class="muted push-right"></span>
           </div>
 
-          <label style="margin-top: 12px">Last frame sent (wire)</label>
+          <label class="mt-12">Last frame sent (wire)</label>
           <div id="wire" class="wire muted">—</div>
         </div>
 
@@ -66,23 +66,23 @@
       </div>
 
       <div>
-        <div class="tabs">
-          <div class="tab active" data-tab="events">Events</div>
-          <div class="tab" data-tab="wait">Wait for event</div>
-          <div class="tab" data-tab="lookup">Lookup (get_block / get_transaction)</div>
+        <div class="tabs" role="tablist" aria-label="View">
+          <button class="tab active" data-tab="events"  role="tab" aria-selected="true"  aria-controls="pane-events" id="tab-events">Events</button>
+          <button class="tab"        data-tab="wait"    role="tab" aria-selected="false" aria-controls="pane-wait"   id="tab-wait">Wait for event</button>
+          <button class="tab"        data-tab="lookup"  role="tab" aria-selected="false" aria-controls="pane-lookup" id="tab-lookup">Lookup (get_block / get_transaction)</button>
         </div>
 
-        <div id="pane-events" class="pane active panel">
-          <div class="row" style="margin-bottom: 8px">
-            <h2 style="margin: 0">Live feed</h2>
-            <button id="clear-feed" class="secondary" style="margin-left: auto">Clear</button>
+        <div id="pane-events" class="pane active panel" role="tabpanel" aria-labelledby="tab-events">
+          <div class="row mb-8">
+            <h2 class="m-0">Live feed</h2>
+            <button id="clear-feed" class="secondary push-right">Clear</button>
           </div>
           <div id="feed" class="feed"></div>
         </div>
 
-        <div id="pane-wait" class="pane panel">
+        <div id="pane-wait" class="pane panel" role="tabpanel" aria-labelledby="tab-wait" hidden>
           <h2>Wait for a specific event</h2>
-          <p class="muted" style="margin-top: 0">
+          <p class="muted m-top-0">
             Subscribe-then-query pattern: ask the node if the target already exists, and if
             not, keep listening on the live stream until it arrives.
           </p>
@@ -92,18 +92,18 @@
             <option value="block-hash">Block by hash</option>
             <option value="tx-hash">Transaction by hash</option>
           </select>
-          <label style="margin-top: 8px" for="wait-value">Value</label>
+          <label class="mt-8" for="wait-value">Value</label>
           <input id="wait-value" type="text" placeholder="e.g. 12345 or 0xabc..." />
-          <div class="row" style="margin-top: 8px">
+          <div class="row mt-8">
             <button id="wait-btn">Wait</button>
             <span id="wait-status" class="muted"></span>
           </div>
-          <div id="wait-result" class="lookup-result" style="margin-top: 8px; display: none"></div>
+          <div id="wait-result" class="lookup-result mt-8 hidden"></div>
         </div>
 
-        <div id="pane-lookup" class="pane panel">
+        <div id="pane-lookup" class="pane panel" role="tabpanel" aria-labelledby="tab-lookup" hidden>
           <h2>One-shot request over the same WebSocket</h2>
-          <p class="muted" style="margin-top: 0">
+          <p class="muted m-top-0">
             The same WebSocket carries event subscriptions and request/response. Send a
             request with an <code>id</code>; the matching response (or error) comes back
             on the stream.
@@ -113,13 +113,13 @@
             <option value="get_block">get_block</option>
             <option value="get_transaction">get_transaction</option>
           </select>
-          <label style="margin-top: 8px" for="lookup-params">Params (JSON)</label>
+          <label class="mt-8" for="lookup-params">Params (JSON)</label>
           <textarea id="lookup-params" spellcheck="false">{"nonce": 1}</textarea>
-          <div class="row" style="margin-top: 8px">
+          <div class="row mt-8">
             <button id="lookup-btn">Send</button>
             <span id="lookup-status" class="muted"></span>
           </div>
-          <div id="lookup-result" class="lookup-result" style="margin-top: 8px; display: none"></div>
+          <div id="lookup-result" class="lookup-result mt-8 hidden"></div>
         </div>
       </div>
     </div>

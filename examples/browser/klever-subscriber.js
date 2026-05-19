@@ -16,7 +16,17 @@
  *
  * No build step, no dependencies. Drop this file into your project and
  * include it with <script src="klever-subscriber.js"></script>.
+ *
+ * Caveats / limitations consumers should know:
+ *   - connect() resolves on the WebSocket handshake, NOT on the node's
+ *     subscribe ack. If the server rejects the subscribe payload it'll
+ *     close the socket shortly after; listen for "close" / "error" to
+ *     detect that.
+ *   - No automatic reconnect. If the socket closes, call connect() again.
+ *     Wrap in a backoff loop if you need resilience.
  */
+const _KLEVER_EVENT_NAMES = ["event", "open", "close", "error"];
+
 class KleverSubscriber {
   /**
    * @param {string} url Full WebSocket URL, e.g. "ws://node:8080/subscribe".
@@ -90,14 +100,21 @@ class KleverSubscriber {
   }
 
   /**
-   * Register an event handler.
+   * Register an event handler. Valid names:
    *   on("event", (evt) => ...)   per node-stream event (has .type)
    *   on("open",  () => ...)      socket opened
    *   on("close", () => ...)      socket closed (also if it never opened)
    *   on("error", (msg) => ...)   transport error or server error frame
+   *
+   * Throws on an unknown event name — typos like on("evnet", …) would
+   * otherwise register a handler that never fires.
    */
   on(name, fn) {
-    if (!this._listeners[name]) this._listeners[name] = [];
+    if (!_KLEVER_EVENT_NAMES.includes(name)) {
+      throw new Error(
+        `unknown event "${name}" (valid: ${_KLEVER_EVENT_NAMES.join(", ")})`
+      );
+    }
     this._listeners[name].push(fn);
   }
 
@@ -138,10 +155,16 @@ class KleverSubscriber {
   // --- convenience wrappers ---
 
   /** @param {{nonce?: number, hash?: string, withTxs?: boolean}} params */
-  getBlock(params) { return this.request("get_block", params); }
+  getBlock(params = {}) {
+    if (params.nonce == null && !params.hash) {
+      return Promise.reject(new Error("getBlock: nonce or hash is required"));
+    }
+    return this.request("get_block", params);
+  }
 
   /** @param {string} hash @param {boolean} [withResults] */
   getTransaction(hash, withResults = false) {
+    if (!hash) return Promise.reject(new Error("getTransaction: hash is required"));
     return this.request("get_transaction", { hash, withResults });
   }
 
@@ -153,6 +176,9 @@ class KleverSubscriber {
    * @returns {Promise<any>} node ack payload
    */
   subscribeMore({ types = [], addresses = [] } = {}) {
+    if (types.length === 0 && addresses.length === 0) {
+      return Promise.reject(new Error("subscribeMore: types or addresses must be non-empty"));
+    }
     return this.request("subscribe", { types, addresses });
   }
 
@@ -169,6 +195,9 @@ class KleverSubscriber {
    * @returns {Promise<any[]>} array of node ack payloads, in [addresses, types] order.
    */
   unsubscribe({ types = [], addresses = [] } = {}) {
+    if (types.length === 0 && addresses.length === 0) {
+      return Promise.reject(new Error("unsubscribe: types or addresses must be non-empty"));
+    }
     const ops = [];
     if (addresses.length) ops.push(this.request("unsubscribe", { addresses }));
     if (types.length)     ops.push(this.request("unsubscribe", { types }));
@@ -220,7 +249,8 @@ class KleverSubscriber {
   }
 }
 
-// Make the class available globally for the demo. If you're using ES modules,
-// add `export { KleverSubscriber };` and import from your script tag with
-// `<script type="module">`.
-window.KleverSubscriber = KleverSubscriber;
+// Expose the class for both classic <script> tags and CommonJS-style
+// consumers. For ES modules, replace this block with
+// `export { KleverSubscriber };` and load via <script type="module">.
+if (typeof window !== "undefined") window.KleverSubscriber = KleverSubscriber;
+if (typeof module !== "undefined" && module.exports) module.exports = { KleverSubscriber };
