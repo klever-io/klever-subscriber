@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Klever Subscriber — Browser WebSocket Example</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h1>Klever Subscriber — Browser WebSocket Example</h1>
+    <p class="subtitle">
+      Connects directly to a Klever node's <code>/subscribe</code> endpoint from the browser.
+      No server, no build step — open this file with <code>file://</code> or any static host.
+      Adapt <code>klever-subscriber.js</code> into your dApp or game to receive on-chain events
+      in real time.
+    </p>
+
+    <div class="grid">
+      <div>
+        <div class="panel">
+          <h2>Connection</h2>
+          <label for="url">Node WebSocket URL</label>
+          <input id="url" type="text" value="ws://localhost:8080/subscribe" spellcheck="false" />
+
+          <label class="mt-10">Event types</label>
+          <div class="checks">
+            <label><input type="checkbox" value="blocks" checked /> blocks</label>
+            <label><input type="checkbox" value="transactions" /> transactions</label>
+            <label><input type="checkbox" value="user_transactions" /> user_transactions</label>
+            <label><input type="checkbox" value="accounts" /> accounts</label>
+          </div>
+
+          <label class="mt-10" for="addresses">Addresses (comma-separated, optional)</label>
+          <textarea id="addresses" placeholder="klv1..., klv1..."></textarea>
+
+          <div class="row mt-10">
+            <button id="connect-btn">Connect</button>
+            <button id="disconnect-btn" class="secondary" disabled>Disconnect</button>
+            <span class="status push-right">
+              <span id="status-dot" class="dot"></span>
+              <span id="status-text">Idle</span>
+            </span>
+          </div>
+
+          <div class="row mt-6">
+            <button id="sub-more-btn" class="secondary" disabled title="Send subscribe with the current form values — additive">Subscribe more</button>
+            <button id="unsub-btn" class="secondary" disabled title="Send unsubscribe with the current form values — subtractive">Unsubscribe</button>
+            <span id="mutation-status" class="muted push-right"></span>
+          </div>
+
+          <label class="mt-12">Last frame sent (wire)</label>
+          <div id="wire" class="wire muted">—</div>
+        </div>
+
+        <div class="panel">
+          <h2>Stats</h2>
+          <dl class="stats">
+            <dt>Events received</dt><dd id="stat-total">0</dd>
+            <dt>Events / sec</dt><dd id="stat-rate">0.0</dd>
+            <dt>Blocks</dt><dd id="stat-blocks">0</dd>
+            <dt>Transactions</dt><dd id="stat-txs">0</dd>
+            <dt>User txs</dt><dd id="stat-utxs">0</dd>
+            <dt>Accounts</dt><dd id="stat-accts">0</dd>
+          </dl>
+        </div>
+      </div>
+
+      <div>
+        <div class="tabs" role="tablist" aria-label="View">
+          <button class="tab active" data-tab="events"  role="tab" aria-selected="true"  aria-controls="pane-events" id="tab-events">Events</button>
+          <button class="tab"        data-tab="wait"    role="tab" aria-selected="false" aria-controls="pane-wait"   id="tab-wait">Wait for event</button>
+          <button class="tab"        data-tab="lookup"  role="tab" aria-selected="false" aria-controls="pane-lookup" id="tab-lookup">Lookup (get_block / get_transaction)</button>
+        </div>
+
+        <div id="pane-events" class="pane active panel" role="tabpanel" aria-labelledby="tab-events">
+          <div class="row mb-8">
+            <h2 class="m-0">Live feed</h2>
+            <button id="clear-feed" class="secondary push-right">Clear</button>
+          </div>
+          <div id="feed" class="feed"></div>
+        </div>
+
+        <div id="pane-wait" class="pane panel" role="tabpanel" aria-labelledby="tab-wait" hidden>
+          <h2>Wait for a specific event</h2>
+          <p class="muted m-top-0">
+            Subscribe-then-query pattern: ask the node if the target already exists, and if
+            not, keep listening on the live stream until it arrives.
+          </p>
+          <label for="wait-target">Match</label>
+          <select id="wait-target">
+            <option value="block-nonce">Block by nonce</option>
+            <option value="block-hash">Block by hash</option>
+            <option value="tx-hash">Transaction by hash</option>
+          </select>
+          <label class="mt-8" for="wait-value">Value</label>
+          <input id="wait-value" type="text" placeholder="e.g. 12345 or 0xabc..." />
+          <div class="row mt-8">
+            <button id="wait-btn">Wait</button>
+            <span id="wait-status" class="muted"></span>
+          </div>
+          <div id="wait-result" class="lookup-result mt-8 hidden"></div>
+        </div>
+
+        <div id="pane-lookup" class="pane panel" role="tabpanel" aria-labelledby="tab-lookup" hidden>
+          <h2>One-shot request over the same WebSocket</h2>
+          <p class="muted m-top-0">
+            The same WebSocket carries event subscriptions and request/response. Send a
+            request with an <code>id</code>; the matching response (or error) comes back
+            on the stream.
+          </p>
+          <label for="lookup-method">Method</label>
+          <select id="lookup-method">
+            <option value="get_block">get_block</option>
+            <option value="get_transaction">get_transaction</option>
+          </select>
+          <label class="mt-8" for="lookup-params">Params (JSON)</label>
+          <textarea id="lookup-params" spellcheck="false">{"nonce": 1}</textarea>
+          <div class="row mt-8">
+            <button id="lookup-btn">Send</button>
+            <span id="lookup-status" class="muted"></span>
+          </div>
+          <div id="lookup-result" class="lookup-result mt-8 hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order matters: the library has to load before the demo glue. -->
+    <script src="klever-subscriber.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
