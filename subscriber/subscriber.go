@@ -60,8 +60,9 @@ func WithQueryOnly() Option {
 }
 
 type Subscription struct {
-	ch  chan Event
-	sub *Subscriber
+	ch      chan Event
+	sub     *Subscriber
+	closeMu sync.Once
 }
 
 func (s *Subscription) C() <-chan Event {
@@ -69,7 +70,9 @@ func (s *Subscription) C() <-chan Event {
 }
 
 func (s *Subscription) Close() {
-	s.sub.removeSub(s.ch)
+	s.closeMu.Do(func() {
+		s.sub.removeSub(s.ch)
+	})
 }
 
 type Subscriber struct {
@@ -84,11 +87,15 @@ type Subscriber struct {
 
 	connected atomic.Bool
 
+	// reconfigureMu serializes Reconfigure / AddSubscriptions /
+	// RemoveSubscriptions so their wire messages and local state
+	// updates never interleave.
+	reconfigureMu sync.Mutex
+
 	mu          sync.RWMutex
 	types       []EventType
 	addresses   []string
 	subscribers []chan Event
-	closed      map[chan Event]struct{}
 	connCancel  context.CancelFunc
 	events      <-chan Event
 
@@ -111,7 +118,6 @@ func New(host string, types []EventType, opts ...Option) *Subscriber {
 		reconnectInterval: DefaultReconnectInterval,
 		pingInterval:      DefaultPingInterval,
 		reconnectCh:       make(chan struct{}, 1),
-		closed:            make(map[chan Event]struct{}),
 		pending:           make(map[string]chan *Response),
 	}
 	for _, opt := range opts {
@@ -138,10 +144,7 @@ func (s *Subscriber) removeSub(ch chan Event) {
 	for i, sub := range s.subscribers {
 		if sub == ch {
 			s.subscribers = append(s.subscribers[:i], s.subscribers[i+1:]...)
-			if _, already := s.closed[ch]; !already {
-				close(ch)
-				s.closed[ch] = struct{}{}
-			}
+			close(ch)
 			return
 		}
 	}
@@ -179,10 +182,7 @@ func (s *Subscriber) closeSubscribers() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, ch := range s.subscribers {
-		if _, already := s.closed[ch]; !already {
-			close(ch)
-			s.closed[ch] = struct{}{}
-		}
+		close(ch)
 	}
 	s.subscribers = nil
 }

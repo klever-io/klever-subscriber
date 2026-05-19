@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/klever-io/klever-subscriber/subscriber"
@@ -26,10 +25,8 @@ func (h *QueryHandler) HandleGetTransaction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req getTransactionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 
@@ -60,10 +57,8 @@ func (h *QueryHandler) HandleGetBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req getBlockRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 

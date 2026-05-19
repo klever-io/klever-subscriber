@@ -2,6 +2,17 @@
   "use strict";
 
   var MAX_EVENTS = 500;
+  var MAX_JSON_DEPTH = 32;
+  var KNOWN_TYPES = {
+    blocks: true,
+    transactions: true,
+    user_transactions: true,
+    accounts: true,
+  };
+
+  function safeTypeClass(t) {
+    return KNOWN_TYPES[t] ? t : "";
+  }
 
   var statusDot = document.getElementById("status-dot");
   var statusText = document.getElementById("status");
@@ -107,7 +118,7 @@
     } else {
       activeTypesEl.innerHTML = serverTypes
         .map(function (t) {
-          return '<div class="card-item"><span class="card-dot ' + escapeHTML(t) + '"></span><span class="card-label">' + escapeHTML(t) + "</span></div>";
+          return '<div class="card-item"><span class="card-dot ' + safeTypeClass(t) + '"></span><span class="card-label">' + escapeHTML(t) + "</span></div>";
         })
         .join("");
     }
@@ -310,12 +321,13 @@
   function applyFilters() {
     var items = eventListEl.querySelectorAll(".event-item");
     items.forEach(function (el) {
-      el.style.display = filters[el.dataset.type] ? "" : "none";
+      el.classList.toggle("hidden", !filters[el.dataset.type]);
     });
   }
 
   function highlightJSON(obj, indent) {
     if (indent === undefined) indent = 0;
+    if (indent > MAX_JSON_DEPTH) return '<span class="j-null">…</span>';
     var pad = "  ".repeat(indent);
     if (obj === null) return '<span class="j-null">null</span>';
     if (typeof obj === "boolean")
@@ -390,7 +402,7 @@
 
     var badge =
       '<span class="ev-badge ' +
-      escapeHTML(evt.type || "") +
+      safeTypeClass(evt.type) +
       '">' +
       escapeHTML(evt.type || "unknown") +
       "</span>";
@@ -416,7 +428,7 @@
     });
 
     if (!filters[evt.type]) {
-      div.style.display = "none";
+      div.classList.add("hidden");
     }
 
     eventListEl.insertBefore(div, eventListEl.firstChild);
@@ -426,13 +438,40 @@
     }
   }
 
+  function setStatus(connected) {
+    var label = connected ? "Connected" : "Disconnected";
+    var cls = "status-dot " + (connected ? "connected" : "disconnected");
+    statusText.textContent = label;
+    statusDot.className = cls;
+    statusDotStats.className = cls;
+    statusStats.textContent = label;
+  }
+
+  function applyStats(s) {
+    if (!s) return;
+    setStatus(!!s.connected);
+    epsEl.textContent = (s.eventsPerSec || 0).toFixed(1);
+    totalEl.textContent = s.total || 0;
+
+    if (s.url) {
+      nodeUrlEl.textContent = s.url;
+      nodeUrlEl.title = s.url;
+    }
+
+    var types = ["blocks", "transactions", "user_transactions", "accounts"];
+    types.forEach(function (t) {
+      if (countEls[t]) {
+        countEls[t].textContent = (s.counts && s.counts[t]) || 0;
+      }
+    });
+  }
+
   function connectSSE() {
     var es = new EventSource("/events");
 
-    es.onopen = function () {
-      statusText.textContent = "Connected";
-      statusDot.className = "status-dot connected";
-    };
+    // Don't preemptively claim "Connected" on SSE open — the broker
+    // sends an initial stats frame within milliseconds that reflects
+    // the real upstream-node state (which is what the user cares about).
 
     es.onmessage = function (e) {
       try {
@@ -440,54 +479,25 @@
       } catch (err) {}
     };
 
+    es.addEventListener("stats", function (e) {
+      try {
+        applyStats(JSON.parse(e.data));
+      } catch (err) {}
+    });
+
+    es.addEventListener("subscription", function (e) {
+      try {
+        handleSubscriptionResponse(JSON.parse(e.data));
+      } catch (err) {}
+    });
+
     es.onerror = function () {
-      statusText.textContent = "Disconnected";
-      statusDot.className = "status-dot disconnected";
+      // SSE dropped — we no longer know the node state, so reflect
+      // "Disconnected" across both the top badge and the Stats panel.
+      setStatus(false);
     };
-  }
-
-  function pollStats() {
-    fetch("/stats")
-      .then(function (r) {
-        return r.json();
-      })
-      .then(function (s) {
-        if (s.connected) {
-          statusText.textContent = "Connected";
-          statusDot.className = "status-dot connected";
-          statusDotStats.className = "status-dot connected";
-          statusStats.textContent = "Connected";
-        } else if (serverTypes.length > 0) {
-          statusText.textContent = "Disconnected";
-          statusDot.className = "status-dot disconnected";
-          statusDotStats.className = "status-dot disconnected";
-          statusStats.textContent = "Disconnected";
-        }
-        epsEl.textContent = (s.eventsPerSec || 0).toFixed(1);
-        totalEl.textContent = s.total || 0;
-
-        if (s.url) {
-          nodeUrlEl.textContent = s.url;
-          nodeUrlEl.title = s.url;
-        }
-
-        var types = [
-          "blocks",
-          "transactions",
-          "user_transactions",
-          "accounts",
-        ];
-        types.forEach(function (t) {
-          if (countEls[t]) {
-            countEls[t].textContent = (s.counts && s.counts[t]) || 0;
-          }
-        });
-      })
-      .catch(function () {});
   }
 
   loadSubscription();
   connectSSE();
-  pollStats();
-  setInterval(pollStats, 2000);
 })();

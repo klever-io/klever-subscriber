@@ -41,7 +41,9 @@ type rawEvent struct {
 	Data    json.RawMessage `json:"data"`
 }
 
-// DecodeEvent decodes a raw WebSocket message into an Event.
+// DecodeEvent decodes a raw WebSocket message into an Event. The message
+// slice is copied so callers can hold Raw safely after the underlying
+// read buffer is reused.
 func DecodeEvent(message []byte) (Event, error) {
 	var raw rawEvent
 	if err := json.Unmarshal(message, &raw); err != nil {
@@ -52,7 +54,7 @@ func DecodeEvent(message []byte) (Event, error) {
 		Type:    EventType(raw.Type),
 		Address: raw.Address,
 		Hash:    raw.Hash,
-		Raw:     message,
+		Raw:     append([]byte(nil), message...),
 	}
 
 	var jsonData any

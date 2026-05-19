@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -12,22 +13,41 @@ import (
 	"github.com/klever-io/klever-subscriber/subscriber"
 )
 
-const DefaultMaxClients = 100
+const (
+	DefaultMaxClients = 100
+	rateWindowSeconds = 10
+)
 
-type client struct {
-	events chan subscriber.Event
+type sseFrame struct {
+	event string
+	data  []byte
 }
 
+type client struct {
+	frames chan sseFrame
+}
+
+// Broker fans out subscriber events to SSE clients and tracks delivery
+// counters. Hot counters are atomic so per-event work doesn't contend with
+// the SSE clients map.
 type Broker struct {
 	maxClients  int
 	isConnected func() bool
 	url         string
 
-	mu       sync.RWMutex
-	clients  map[*client]struct{}
-	total    uint64
-	counts   map[subscriber.EventType]uint64
-	recentTs []time.Time
+	clientsMu sync.RWMutex
+	clients   map[*client]struct{}
+
+	total      atomic.Uint64
+	blocks     atomic.Uint64
+	txs        atomic.Uint64
+	userTxs    atomic.Uint64
+	accounts   atomic.Uint64
+	otherCount atomic.Uint64
+
+	rateMu      sync.Mutex
+	rateBuckets [rateWindowSeconds]uint64
+	rateAnchor  int64 // unix second that owns rateBuckets[len-1]
 
 	sseCount atomic.Int64
 }
@@ -38,7 +58,6 @@ func New(maxClients int, isConnected func() bool, url string) *Broker {
 		isConnected: isConnected,
 		url:         url,
 		clients:     make(map[*client]struct{}),
-		counts:      make(map[subscriber.EventType]uint64),
 	}
 }
 
@@ -60,34 +79,45 @@ func (b *Broker) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	c := &client{events: make(chan subscriber.Event, 256)}
-	b.mu.Lock()
+	// Hint the browser EventSource to retry quickly on disconnect.
+	fmt.Fprint(w, "retry: 3000\n\n")
+	flusher.Flush()
+
+	c := &client{frames: make(chan sseFrame, 256)}
+	b.clientsMu.Lock()
 	b.clients[c] = struct{}{}
-	b.mu.Unlock()
+	b.clientsMu.Unlock()
 
 	defer func() {
 		b.sseCount.Add(-1)
-		b.mu.Lock()
+		b.clientsMu.Lock()
 		delete(b.clients, c)
-		b.mu.Unlock()
+		b.clientsMu.Unlock()
 	}()
+
+	if data, err := json.Marshal(b.snapshot()); err == nil {
+		writeFrame(w, flusher, sseFrame{event: "stats", data: data})
+	}
 
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case evt, ok := <-c.events:
+		case f, ok := <-c.frames:
 			if !ok {
 				return
 			}
-			data, err := json.Marshal(evt)
-			if err != nil {
-				continue
-			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
+			writeFrame(w, flusher, f)
 		}
 	}
+}
+
+func writeFrame(w io.Writer, flusher http.Flusher, f sseFrame) {
+	if f.event != "" {
+		fmt.Fprintf(w, "event: %s\n", f.event)
+	}
+	fmt.Fprintf(w, "data: %s\n\n", f.data)
+	flusher.Flush()
 }
 
 func (b *Broker) ProcessEvents(ctx context.Context, events <-chan subscriber.Event) {
@@ -99,32 +129,113 @@ func (b *Broker) ProcessEvents(ctx context.Context, events <-chan subscriber.Eve
 			if !ok {
 				return
 			}
-			now := time.Now()
-			b.mu.Lock()
-			b.total++
-			b.counts[evt.Type]++
-			b.recentTs = append(b.recentTs, now)
-			cutoff := now.Add(-10 * time.Second)
-			start := 0
-			for start < len(b.recentTs) && b.recentTs[start].Before(cutoff) {
-				start++
-			}
-			b.recentTs = b.recentTs[start:]
-			if cap(b.recentTs) > 2*len(b.recentTs) && cap(b.recentTs) > 1024 {
-				compacted := make([]time.Time, len(b.recentTs))
-				copy(compacted, b.recentTs)
-				b.recentTs = compacted
-			}
-			b.mu.Unlock()
+			b.recordEvent(evt.Type)
 
-			b.mu.RLock()
-			for c := range b.clients {
-				select {
-				case c.events <- evt:
-				default:
-				}
+			data, err := json.Marshal(evt)
+			if err != nil {
+				continue
 			}
-			b.mu.RUnlock()
+			b.broadcast(sseFrame{data: data})
 		}
 	}
+}
+
+func (b *Broker) recordEvent(t subscriber.EventType) {
+	b.total.Add(1)
+	switch t {
+	case subscriber.EventBlocks:
+		b.blocks.Add(1)
+	case subscriber.EventTransactions:
+		b.txs.Add(1)
+	case subscriber.EventUserTransactions:
+		b.userTxs.Add(1)
+	case subscriber.EventAccounts:
+		b.accounts.Add(1)
+	default:
+		b.otherCount.Add(1)
+	}
+	b.bumpRate(time.Now().Unix())
+}
+
+// bumpRate advances the ring to `now` (zeroing buckets that aged out)
+// and increments the current bucket. O(min(delta, window)).
+func (b *Broker) bumpRate(now int64) {
+	b.rateMu.Lock()
+	defer b.rateMu.Unlock()
+	if b.rateAnchor == 0 {
+		b.rateAnchor = now
+	}
+	delta := now - b.rateAnchor
+	if delta < 0 {
+		delta = 0
+	}
+	if delta >= rateWindowSeconds {
+		for i := range b.rateBuckets {
+			b.rateBuckets[i] = 0
+		}
+	} else {
+		for i := int64(0); i < delta; i++ {
+			copy(b.rateBuckets[:], b.rateBuckets[1:])
+			b.rateBuckets[len(b.rateBuckets)-1] = 0
+		}
+	}
+	b.rateAnchor = now
+	b.rateBuckets[len(b.rateBuckets)-1]++
+}
+
+// rateSnapshot returns events received in the trailing rateWindowSeconds.
+func (b *Broker) rateSnapshot(now int64) uint64 {
+	b.rateMu.Lock()
+	defer b.rateMu.Unlock()
+	if b.rateAnchor == 0 {
+		return 0
+	}
+	delta := now - b.rateAnchor
+	if delta >= rateWindowSeconds {
+		for i := range b.rateBuckets {
+			b.rateBuckets[i] = 0
+		}
+		b.rateAnchor = now
+		return 0
+	}
+	for i := int64(0); i < delta; i++ {
+		copy(b.rateBuckets[:], b.rateBuckets[1:])
+		b.rateBuckets[len(b.rateBuckets)-1] = 0
+	}
+	b.rateAnchor = now
+	var sum uint64
+	for _, v := range b.rateBuckets {
+		sum += v
+	}
+	return sum
+}
+
+// BroadcastSubscription pushes the current subscription set as a typed
+// SSE frame so every open dashboard tab stays in sync after a Reconfigure
+// / AddSubscriptions / RemoveSubscriptions call from any tab or API
+// consumer.
+func (b *Broker) BroadcastSubscription(types []subscriber.EventType, addresses []string) {
+	payload := struct {
+		Types     []subscriber.EventType `json:"types"`
+		Addresses []string               `json:"addresses"`
+	}{
+		Types:     types,
+		Addresses: addresses,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	b.broadcast(sseFrame{event: "subscription", data: data})
+}
+
+func (b *Broker) broadcast(f sseFrame) {
+	b.clientsMu.RLock()
+	for c := range b.clients {
+		select {
+		case c.frames <- f:
+		default:
+		}
+	}
+	b.clientsMu.RUnlock()
 }

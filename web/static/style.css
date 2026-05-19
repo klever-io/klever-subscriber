@@ -677,6 +677,10 @@ input[type="number"] {
   padding: 48px 20px;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .event-item {
   margin: 4px;
   border: 1px solid var(--border-card);

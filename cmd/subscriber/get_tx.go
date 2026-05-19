@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/klever-io/klever-subscriber/subscriber"
 	"github.com/spf13/cobra"
@@ -28,7 +29,7 @@ var getTxCmd = &cobra.Command{
 			subscriber.WithOnConnect(func() { close(connected) }),
 		)
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		go sub.Start(ctx)
@@ -36,7 +37,7 @@ var getTxCmd = &cobra.Command{
 		select {
 		case <-connected:
 		case <-ctx.Done():
-			return fmt.Errorf("connection timed out")
+			return fmt.Errorf("connection timed out: %w", ctx.Err())
 		}
 
 		data, err := sub.GetTransaction(ctx, hash, withResults)

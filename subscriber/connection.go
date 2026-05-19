@@ -10,6 +10,11 @@ import (
 )
 
 func (s *Subscriber) Start(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil && s.onError != nil {
+			s.onError(fmt.Errorf("subscriber Start panic: %v", r))
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -93,11 +98,29 @@ func (s *Subscriber) connect(ctx context.Context) error {
 		s.failAllPending()
 	}()
 
-	conn.SetPongHandler(func(string) error { return nil })
+	// Treat the connection as dead if no frame (data or pong) arrives within
+	// 2 ping intervals. Each pong from the peer extends the deadline so a
+	// silent half-open TCP connection (NAT/LB idle timeout) is detected
+	// instead of hanging the read loop forever.
+	readTimeout := 2 * s.pingInterval
+	if err := conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
+		return fmt.Errorf("set read deadline: %w", err)
+	}
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(readTimeout))
+	})
 
-	typeStrings := make([]string, len(types))
-	for i, t := range types {
-		typeStrings[i] = string(t)
+	// The Klever node rejects an empty subscribe ("subscribed_types must
+	// not be empty") and closes the socket, which would kill any
+	// pending request. For query-only clients we send a placeholder
+	// subscribe to an address-scoped type with no addresses so the node
+	// accepts the connection without delivering any events.
+	typeStrings := make([]string, 0, len(types))
+	for _, t := range types {
+		typeStrings = append(typeStrings, string(t))
+	}
+	if len(typeStrings) == 0 {
+		typeStrings = []string{string(EventAccounts)}
 	}
 	req := subscribeRequest{
 		Addresses: addrs,
@@ -146,17 +169,32 @@ func (s *Subscriber) connect(ctx context.Context) error {
 				}
 				return
 			}
+			_ = conn.SetReadDeadline(time.Now().Add(readTimeout))
+
+			// gorilla/websocket reuses internal read buffers; copy before
+			// fan-out so async consumers can't observe the next frame's bytes.
+			frame := append([]byte(nil), message...)
 
 			var probe struct {
 				ID    string `json:"id"`
 				Type  string `json:"type"`
 				Error string `json:"error"`
 			}
-			json.Unmarshal(message, &probe)
+			if err := json.Unmarshal(frame, &probe); err != nil {
+				if s.onError != nil {
+					s.onError(fmt.Errorf("decode frame: %w", err))
+				}
+				continue
+			}
 
 			if probe.ID != "" {
 				var resp Response
-				json.Unmarshal(message, &resp)
+				if err := json.Unmarshal(frame, &resp); err != nil {
+					if s.onError != nil {
+						s.onError(fmt.Errorf("decode response %s: %w", probe.ID, err))
+					}
+					continue
+				}
 				s.routeResponse(&resp)
 				continue
 			}
@@ -169,15 +207,15 @@ func (s *Subscriber) connect(ctx context.Context) error {
 			}
 
 			if probe.Type != "" {
-				evt, decErr := DecodeEvent(message)
+				evt, decErr := DecodeEvent(frame)
 				if decErr != nil {
-					evt = Event{Raw: message, Data: string(message)}
+					evt = Event{Raw: frame, Data: string(frame)}
 				}
 				s.fanOut(evt)
 				continue
 			}
 
-			evt := Event{Raw: message, Data: string(message)}
+			evt := Event{Raw: frame, Data: string(frame)}
 			s.fanOut(evt)
 		}
 	}()

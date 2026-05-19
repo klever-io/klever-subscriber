@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -16,31 +17,63 @@ type StatsSnapshot struct {
 	URL          string                          `json:"url"`
 }
 
-func (b *Broker) HandleStats(w http.ResponseWriter, r *http.Request) {
-	b.mu.RLock()
-	now := time.Now()
-	cutoff := now.Add(-10 * time.Second)
-	count := 0
-	for _, ts := range b.recentTs {
-		if ts.After(cutoff) {
-			count++
-		}
+func (b *Broker) snapshot() StatsSnapshot {
+	counts := map[subscriber.EventType]uint64{
+		subscriber.EventBlocks:           b.blocks.Load(),
+		subscriber.EventTransactions:     b.txs.Load(),
+		subscriber.EventUserTransactions: b.userTxs.Load(),
+		subscriber.EventAccounts:         b.accounts.Load(),
 	}
-	counts := make(map[subscriber.EventType]uint64, len(b.counts))
-	for k, v := range b.counts {
-		counts[k] = v
-	}
-	total := b.total
-	b.mu.RUnlock()
-
-	stats := StatsSnapshot{
+	return StatsSnapshot{
 		Connected:    b.isConnected(),
-		Total:        total,
+		Total:        b.total.Load(),
 		Counts:       counts,
-		EventsPerSec: float64(count) / 10.0,
+		EventsPerSec: float64(b.rateSnapshot(time.Now().Unix())) / float64(rateWindowSeconds),
 		URL:          b.url,
 	}
+}
 
+func (b *Broker) HandleStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(stats)
+	_ = json.NewEncoder(w).Encode(b.snapshot())
+}
+
+// StartStatsLoop broadcasts a stats SSE frame on every heartbeat tick and
+// immediately whenever the upstream connection state flips, so dashboards
+// reflect connect/disconnect without polling. It returns when ctx is canceled.
+func (b *Broker) StartStatsLoop(ctx context.Context, heartbeat time.Duration) {
+	if heartbeat <= 0 {
+		heartbeat = 2 * time.Second
+	}
+	probe := heartbeat / 4
+	if probe < 250*time.Millisecond {
+		probe = 250 * time.Millisecond
+	}
+
+	ticker := time.NewTicker(probe)
+	defer ticker.Stop()
+
+	lastConnected := b.isConnected()
+	lastPush := time.Time{}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			connected := b.isConnected()
+			stateChanged := connected != lastConnected
+			heartbeatDue := now.Sub(lastPush) >= heartbeat
+			if !stateChanged && !heartbeatDue {
+				continue
+			}
+			data, err := json.Marshal(b.snapshot())
+			if err != nil {
+				continue
+			}
+			b.broadcast(sseFrame{event: "stats", data: data})
+			lastConnected = connected
+			lastPush = now
+		}
+	}
 }

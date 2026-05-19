@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/klever-io/klever-subscriber/subscriber"
 	"github.com/spf13/cobra"
@@ -18,7 +19,8 @@ var getBlockCmd = &cobra.Command{
 	Use:   "get-block",
 	Short: "Look up a block by nonce or hash",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if blockNonce == 0 && blockHash == "" {
+		nonceSet := cmd.Flags().Changed("nonce")
+		if !nonceSet && blockHash == "" {
 			return fmt.Errorf("must provide --nonce or --hash")
 		}
 
@@ -34,7 +36,7 @@ var getBlockCmd = &cobra.Command{
 			subscriber.WithOnConnect(func() { close(connected) }),
 		)
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		go sub.Start(ctx)
@@ -42,14 +44,14 @@ var getBlockCmd = &cobra.Command{
 		select {
 		case <-connected:
 		case <-ctx.Done():
-			return fmt.Errorf("connection timed out")
+			return fmt.Errorf("connection timed out: %w", ctx.Err())
 		}
 
 		params := subscriber.GetBlockParams{
 			Hash:    blockHash,
 			WithTxs: withTxs,
 		}
-		if blockNonce > 0 {
+		if nonceSet {
 			params.Nonce = &blockNonce
 		}
 

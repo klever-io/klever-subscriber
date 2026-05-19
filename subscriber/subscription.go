@@ -7,15 +7,13 @@ import (
 )
 
 func (s *Subscriber) Reconfigure(types []EventType, addresses []string) {
-	s.mu.Lock()
-	oldTypes := make([]EventType, len(s.types))
-	copy(oldTypes, s.types)
-	oldAddrs := make([]string, len(s.addresses))
-	copy(oldAddrs, s.addresses)
-	s.types = types
-	s.addresses = addresses
-	cancel := s.connCancel
-	s.mu.Unlock()
+	s.reconfigureMu.Lock()
+	defer s.reconfigureMu.Unlock()
+
+	s.mu.RLock()
+	oldTypes := append([]EventType(nil), s.types...)
+	oldAddrs := append([]string(nil), s.addresses...)
+	s.mu.RUnlock()
 
 	if s.connected.Load() {
 		ctx, c := context.WithTimeout(context.Background(), 5*time.Second)
@@ -41,13 +39,12 @@ func (s *Subscriber) Reconfigure(types []EventType, addresses []string) {
 			}
 		}
 
+		// Send removals with only the dimension that actually changed.
+		// Mixing types and addresses in the same unsubscribe is ambiguous —
+		// for global event types like "blocks" the node treats it as
+		// "drop the type subscription entirely" and stops delivering them.
 		if ok && len(removeA) > 0 {
-			oldTypeStrs := make([]string, len(oldTypes))
-			for i, t := range oldTypes {
-				oldTypeStrs[i] = string(t)
-			}
 			_, err := s.sendRequest(ctx, "unsubscribe", map[string]any{
-				"types":     oldTypeStrs,
 				"addresses": removeA,
 			})
 			if err != nil {
@@ -61,8 +58,7 @@ func (s *Subscriber) Reconfigure(types []EventType, addresses []string) {
 				removeTypeStrs[i] = string(t)
 			}
 			_, err := s.sendRequest(ctx, "unsubscribe", map[string]any{
-				"types":     removeTypeStrs,
-				"addresses": oldAddrs,
+				"types": removeTypeStrs,
 			})
 			if err != nil {
 				ok = false
@@ -70,9 +66,21 @@ func (s *Subscriber) Reconfigure(types []EventType, addresses []string) {
 		}
 
 		if ok {
+			s.mu.Lock()
+			s.types = types
+			s.addresses = addresses
+			s.mu.Unlock()
 			return
 		}
 	}
+
+	// Slow path: persist the desired state and bounce the connection so
+	// the next handshake carries the new subscription set.
+	s.mu.Lock()
+	s.types = types
+	s.addresses = addresses
+	cancel := s.connCancel
+	s.mu.Unlock()
 
 	if cancel != nil {
 		cancel()
@@ -84,6 +92,9 @@ func (s *Subscriber) Reconfigure(types []EventType, addresses []string) {
 }
 
 func (s *Subscriber) AddSubscriptions(ctx context.Context, types []EventType, addresses []string) error {
+	s.reconfigureMu.Lock()
+	defer s.reconfigureMu.Unlock()
+
 	typeStrs := make([]string, len(types))
 	for i, t := range types {
 		typeStrs[i] = string(t)
@@ -122,6 +133,9 @@ func (s *Subscriber) AddSubscriptions(ctx context.Context, types []EventType, ad
 }
 
 func (s *Subscriber) RemoveSubscriptions(ctx context.Context, types []EventType, addresses []string) error {
+	s.reconfigureMu.Lock()
+	defer s.reconfigureMu.Unlock()
+
 	typeStrs := make([]string, len(types))
 	for i, t := range types {
 		typeStrs[i] = string(t)
